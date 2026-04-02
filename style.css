@@ -140,16 +140,16 @@
     content: "";
     position: absolute;
 
-    right: -20%;   /* 👉 跟魚身比例 */
+    right: -5px;   
     top: 50%;
     transform: translateY(-50%);
 
     width: 0;
     height: 0;
 
-    border-top: 25% solid transparent;
-    border-bottom: 25% solid transparent;
-    border-left: 40% solid currentColor;
+    border-top: 4px solid transparent;
+    border-bottom: 4px solid transparent;
+    border-left: 6px solid currentColor;
 }
 
 
