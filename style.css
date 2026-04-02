@@ -65,10 +65,10 @@
         background-position: center center;
     }
     25% {
-        background-position: calc(50% - 30px) center;
+        background-position: calc(50% - 20px) center;
     }
     75% {
-        background-position: calc(50% + 30px) center;
+        background-position: calc(50% + 20px) center;
     }
     100% {
         background-position: center center;
@@ -99,7 +99,7 @@
         inset 0 0 5px rgba(255,255,255,0.5);
 
 
-    animation: rise 8s linear forwards;
+    animation: rise 6s linear forwards;
 }
 
 @keyframes rise {
@@ -108,7 +108,7 @@
         opacity: 0.6;
     }
     100% {
-        transform: translateY(-100%);
+        transform: translateY(-300px);
         opacity: 0;
     }
 }
