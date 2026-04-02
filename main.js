@@ -174,6 +174,23 @@ function toggleMusic() {
     else { music.pause(); btn.innerText = "🔇"; btn.style.opacity = "0.4"; }
 }
 
+function createBubble() {
+    const b = document.createElement("div");
+    b.className = "bubble";
+
+    b.style.left = Math.random() * 100 + "%";
+    b.style.animationDuration = (4 + Math.random() * 4) + "s";
+    b.style.width = b.style.height = (5 + Math.random() * 10) + "px";
+
+    document.getElementById("bubbles").appendChild(b);
+
+    setTimeout(() => b.remove(), 8000);
+}
+
+setInterval(createBubble, 500);
+
+
+
 function initGame() {
     document.getElementById("music-control").style.display = "flex";
     const music = document.getElementById("bgm");
