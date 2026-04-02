@@ -189,6 +189,40 @@ function createBubble() {
 
 setInterval(createBubble, 500);
 
+const fishColors = [
+    ["#ff9aa2", "#ffb7b2"], // 粉
+    ["#a0e7e5", "#b4f8c8"], // 青綠
+    ["#a0c4ff", "#bdb2ff"], // 藍紫
+    ["#ffd6a5", "#fdffb6"], // 橘黃
+];
+
+function createFish() {
+    const fish = document.createElement("div");
+    const color = fishColors[Math.floor(Math.random() * fishColors.length)];
+    fish.className = "fish";
+
+    // 隨機高度（在 ocean 裡）
+    fish.style.top = Math.random() * 80 + "%";
+
+    // 隨機大小
+    const size = 40 + Math.random() * 40;
+    fish.style.width = size + "px";
+    fish.style.height = size / 2 + "px";
+
+    // 隨機速度
+    const duration = 8 + Math.random() * 8;
+    fish.style.animationDuration = duration + "s";
+
+    fish.style.background = `linear-gradient(90deg, ${color[0]}, ${color[1]})`;
+    fish.style.color = color[0];
+
+    document.getElementById("fish-layer").appendChild(fish);
+
+    setTimeout(() => fish.remove(), duration * 1000);
+}
+
+// 每 2~4 秒出一隻魚
+setInterval(createFish, 2000);
 
 
 function initGame() {
