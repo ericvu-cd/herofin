@@ -139,15 +139,19 @@
 .fish::after {
     content: "";
     position: absolute;
-    right: -10px;
-    top: 8px;
+
+    right: -20%;   /* 👉 跟魚身比例 */
+    top: 50%;
+    transform: translateY(-50%);
 
     width: 0;
     height: 0;
-    border-top: 7px solid transparent;
-    border-bottom: 7px solid transparent;
-    border-left: 12px solid currentColor;
+
+    border-top: 25% solid transparent;
+    border-bottom: 25% solid transparent;
+    border-left: 40% solid currentColor;
 }
+
 
 /* 游動動畫 */
 @keyframes swim {
