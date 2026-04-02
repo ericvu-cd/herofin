@@ -205,12 +205,12 @@ function createFish() {
     fish.style.top = Math.random() * 80 + "%";
 
     // 隨機大小
-    const size = 40 + Math.random() * 40;
+    const size = 20 + Math.random() * 20;
     fish.style.width = size + "px";
     fish.style.height = size / 2 + "px";
 
     // 隨機速度
-    const duration = 8 + Math.random() * 8;
+    const duration = 6 + Math.random() * 8;
     fish.style.animationDuration = duration + "s";
 
     fish.style.background = `linear-gradient(90deg, ${color[0]}, ${color[1]})`;
@@ -222,7 +222,7 @@ function createFish() {
 }
 
 // 每 2~4 秒出一隻魚
-setInterval(createFish, 2000);
+setInterval(createFish, 4000);
 
 
 function initGame() {
