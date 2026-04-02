@@ -55,22 +55,23 @@
     border-radius: 20px;
 
     background: url('ozone.png') no-repeat center center;
+    background-position: center center;
     background-size: cover;
     animation: oceanMoveX 40s linear infinite;
 }
 
 @keyframes oceanMoveX {
     0% {
-        background-position: 0 0;
+        background-position: center center;
     }
     25% {
-        background-position: -30px 0; /* 左移100 */
+        background-position: calc(50% - 30px) center;
     }
     75% {
-        background-position: 30px 0;  /* 右移200（從-100到+100） */
+        background-position: calc(50% + 30px) center;
     }
     100% {
-        background-position: 0 0;      /* 再回來（左移100） */
+        background-position: center center;
     }
 }
 #bubbles {
@@ -91,10 +92,10 @@
     
     width: 10px;
     height: 10px;
-    background: rgba(255,255,255,0.4);
+    background: rgba(255,255,255,0.8);
     border-radius: 50%;
 
-    animation: rise 6s linear forwards;
+    animation: rise 8s linear forwards;
 }
 
 @keyframes rise {
