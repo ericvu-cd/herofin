@@ -1,139 +1,174 @@
-:root { 
-    --p: #1976D2; 
-    --ai1: #D32F2F; 
-    --ai2: #388E3C; 
-    --ai3: #7B1FA2; 
-}
+:root { --p: #1976D2; --ai1: #D32F2F; --ai2: #388E3C; --ai3: #7B1FA2; }
+body { font-family: "Microsoft JhengHei", sans-serif; background: #e0f2f1; margin: 0; display: flex; flex-direction: column; height: 100vh; height: 100dvh; overflow: hidden; }
 
-body { 
-    font-family: "Microsoft JhengHei", sans-serif; 
-    background: #e0f2f1; 
-    margin: 0; 
-    display: flex; 
-    flex-direction: column; 
-    height: 100vh; 
-    height: 100dvh; 
-    overflow: hidden; 
-}
 
 #welcome-screen {
-    position: absolute; 
-    top: 0; 
-    left: 0; 
-    width: 100%; 
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
     height: 100%;
-    background: #a8e6cf url('bgi.png') no-repeat center center; 
+	z-index: 1000;
+
+    background:
+        linear-gradient(rgba(0,0,0,0.2), rgba(0,0,0,0.4)),
+        url('bgi.png') no-repeat center center;
+
     background-size: cover;
-    display: flex; 
-    justify-content: center; 
-    align-items: center; 
-    z-index: 1000;
-    transition: opacity 0.5s;
+	display: flex; justify-content: center; align-items: center; z-index: 1000;
+    transition: opacity 0.8s ease;
+	opacity: 1;
+    visibility: visible;
+}
+#welcome-screen.hidden {
+    opacity: 0;
+    visibility: hidden; /* 使用 visibility 讓它在動畫完後不干涉點擊，且能保有過渡效果 */
+    pointer-events: none; /* 確保徹底無法被點擊 */
+}
+#welcome-screen.fade-out {
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none; /* 確保淡出時不會擋到後面的點擊 */
 }
 
 #real-start-btn {
-    padding: 20px 60px; 
-    font-size: 2.5rem; 
-    background: rgba(255, 223, 186, 0.5); 
-    color: #d35400; 
-    border: 5px solid rgba(255, 179, 71, 0.5); 
-    border-radius: 50px;
-    font-weight: bold; 
-    cursor: pointer; 
-    box-shadow: 0 10px 20px rgba(0,0,0,0.2);
+    padding: 20px 60px; font-size: 2.5rem; background: rgba(255, 223, 186, 0.5); 
+    color: #d35400; border: 5px solid rgba(255, 179, 71, 0.5); border-radius: 50px;
+    font-weight: bold; cursor: pointer; box-shadow: 0 10px 20px rgba(0,0,0,0.2);
     transition: transform 0.2s, opacity 0.2s;
 }
+#real-start-btn:active { transform: scale(0.95); }
 
-#real-start-btn:active { 
-    transform: scale(0.95); 
+#header { background: #00796b; color: white; padding: 15px; text-align: center; font-weight: bold; font-size: 2rem; position: relative; z-index: 50;}
+
+/* 歷史紀錄按鈕 */ 
+#log-btn {
+    position: absolute; /* 改為 absolute 以配合 ocean 容器 */
+    top: 15px;         /* 與 #deck-info 高度一致 */
+    right: 15px;        /* 放在左側，與右側的 20px 對稱 */
+    z-index: 2000;
+    
+    /* 藥丸形狀與顏色調整，與 #deck-info 保持一致 */
+    background: rgba(252, 230, 127, 0.6); 
+    color: black;
+    padding: 8px 20px;
+    border-radius: 30px; 
+    border: none;      
+    
+    font-weight: bold;
+    font-size: 1rem;
+    cursor: pointer;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+    transition: 0.2s;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    white-space: nowrap;
 }
+#log-btn:active { transform: scale(0.95); }
 
-#header { 
-    background: #00796b; 
-    color: white; 
-    padding: 15px; 
-    text-align: center; 
-    font-weight: bold; 
-    font-size: 2rem; 
+/* 彈出式日誌視窗 */
+#log-modal {
+    position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+    background: rgba(0,0,0,0.5); z-index: 4000;
+    display: none; justify-content: center; align-items: center;
 }
-
-#log { 
-    height: 140px; 
-    overflow-y: auto; 
-    background: white; 
-    margin: 10px; 
-    padding: 15px; 
-    font-size: 1.4rem; 
-    border: 3px solid #b2dfdb; 
-    border-radius: 12px; 
-    line-height: 1.6; 
-    font-weight: bold; 
-    color: #333; 
-    box-shadow: inset 0 2px 5px rgba(0,0,0,0.1); 
+#log-content {
+    background: rgba(255,255,255,0.95);
+    width: 90%; max-width: 500px; height: 60vh;
+    border-radius: 20px; display: flex; flex-direction: column;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+    overflow: hidden;
+    backdrop-filter: blur(10px);
 }
-
-.log-entry { 
-    border-bottom: 1px solid #eee; 
-    padding: 2px 0; 
+.log-header {
+    background: #00796b; color: white; padding: 15px; font-weight: bold;
+    display: flex; justify-content: space-between; align-items: center;
+    font-size: 1.2rem;
 }
-
-.log-cmd { 
-    color: #00796b; 
-    background: #e0f2f1; 
-    padding: 2px 5px; 
-    border-radius: 4px; 
+.log-header button {
+    background: #ffdfba; border: none; border-radius: 10px;
+    padding: 5px 15px; font-weight: bold; color: #d35400; cursor: pointer;
 }
-
-.log-secret { 
-    color: #607d8b; 
-    font-style: italic; 
+#log-messages {
+    padding: 15px; overflow-y: auto; flex-grow: 1; font-size: 1.1rem; line-height: 1.6;
+    color: #333; font-weight: bold;
 }
+.log-entry { border-bottom: 1px solid #eee; padding: 4px 0; }
+.log-cmd { color: #00796b; background: #e0f2f1; padding: 2px 5px; border-radius: 4px; }
+.log-secret { color: #607d8b; font-style: italic; }
+.log-success { color: #2e7d32; font-weight: 900; }
 
-.log-success { 
-    color: #2e7d32; 
-    font-weight: 900; 
-}
-
+/* AI 對手區：深色半透明背景、頭像風格 */
 .char-area { 
-    display: flex; 
-    justify-content: space-around; 
-    padding: 5px 10px; 
-    transition: all 0.3s; 
+    background: rgba(0, 0, 0, 0.5);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    display: flex; justify-content: space-around; align-items: center;
+    padding: 10px 5px; 
+    transition: all 0.3s;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+    border-bottom: 1px solid rgba(255,255,255,0.2);
+    z-index: 10;
 }
-
 .box { 
-    flex: 1; 
-    margin: 5px; 
-    padding: 15px 5px; 
-    border: 5px solid; 
-    border-radius: 15px; 
-    background: white; 
-    text-align: center; 
-    font-size: 1.4rem; 
-    font-weight: bold; 
-    transition: all 0.3s; 
+    flex: 1; margin: 0; padding: 0; border: none; background: transparent; 
+    text-align: center; color: white; transition: all 0.3s;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;
+}
+.avatar-img {
+    width: 55px; height: 55px; background: rgba(255,255,255,0.9);
+    border-radius: 50%; border: 3px solid; display: flex; 
+    justify-content: center; align-items: center; font-size: 1.8rem;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+    transition: all 0.3s;
+}
+#ai-1 .avatar-img { border-color: var(--ai1); }
+#ai-2 .avatar-img { border-color: var(--ai2); }
+#ai-3 .avatar-img { border-color: var(--ai3); }
+.ai-name { font-size: 1rem; font-weight: bold; text-shadow: 1px 1px 2px black; }
+.ai-cards { font-size: 1rem; }
+
+/* 預覽視窗中的按鈕樣式 */
+.preview-controls {
+    display: flex;
+    gap: 12px;
+    margin-top: 5px;
+    justify-content: center;
+    width: 100%;
 }
 
-#ai-1 { 
-    border-color: var(--ai1); 
-    color: var(--ai1); 
+.preview-btn {
+    font-size: 12px;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    border: none;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    cursor: pointer;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+    transition: transform 0.1s;
 }
 
-#ai-2 { 
-    border-color: var(--ai2); 
-    color: var(--ai2); 
-}
+.preview-btn:active { transform: scale(0.9); }
+.btn-confirm { background: #A8E6CF; color: white; }
+.btn-cancel { background: #FFB3BA; color: white; }
 
-#ai-3 { 
-    border-color: var(--ai3); 
-    color: var(--ai3); 
+/* 輪到誰的動畫特效 */
+@keyframes aiBounceGlow {
+    0% { transform: translateY(0); box-shadow: 0 0 5px currentColor; }
+    100% { transform: translateY(-8px); box-shadow: 0 0 20px currentColor, 0 0 10px white inset; }
 }
-
-.is-caller {
-    box-shadow: 0 0 15px #ffb347, inset 0 0 10px #ffdfba !important;
-    border-color: #ffb347 !important;
-    background-color: #fff9e6 !important;
-    transform: scale(1.05);
+.box.is-caller .avatar-img {
+    animation: aiBounceGlow 0.6s infinite alternate;
+    border-color: #ffdfba !important;
+    color: #ffdfba !important;
+}
+/* 玩家輪次的高亮 */
+#player-zone.is-caller {
+    box-shadow: 0 -10px 25px rgba(255, 179, 71, 0.5), inset 0 0 15px rgba(255, 223, 186, 0.8) !important;
 }
 
 .mazu-glow {
@@ -144,407 +179,353 @@ body {
 }
 
 #ocean {
-    flex-grow: 1;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    position: relative;
-    margin: 5px 10px;
-    border-radius: 10px;
+    flex-grow: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
+    position: relative; margin: 5px 10px; border-radius: 20px;
     background: url('ozone.png') no-repeat center center;
-    background-position: center center;
-    background-size: cover;
-    animation: oceanMoveX 40s linear infinite;
-}
-
-@keyframes oceanMoveX {
-    0% {
-        background-position: center center;
-    }
-    25% {
-        background-position: calc(50% - 30px) center;
-    }
-    75% {
-        background-position: calc(50% + 30px) center;
-    }
-    100% {
-        background-position: center center;
-    }
-}
-
-#bubbles {
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    overflow: hidden;
-    pointer-events: none;
-    z-index: 1; /* 在背景上，但不蓋UI */
-}
-
-.bubble {
-    position: absolute;
-    bottom: 0;   /* ⬅️ 關鍵：從 ocean 底部開始 */
-    width: 10px;
-    height: 10px;
-    background: rgba(200, 220, 255, 0.5);
-    border-radius: 50%;
-    box-shadow: 
-        0 0 8px rgba(200, 220, 255, 0.6),
-        inset 0 0 5px rgba(255,255,255,0.5);
-    animation: rise 6s linear forwards;
-}
-
-@keyframes rise {
-    0% {
-        transform: translateY(0);
-        opacity: 0.6;
-    }
-    100% {
-        transform: translateY(-300px);
-        opacity: 0;
-    }
-}
-
-#fish-layer {
-    position: absolute;
-    width: 100%;
-    height: 100%;
-    pointer-events: none;
-    overflow: hidden;
-    z-index: 0;
-}
-
-/* 單隻魚 */
-.fish {
-    position: absolute;
-    right: -80px; /* 從畫面外開始 */
-    width: 20px;
-    height: 10px;
-    background: linear-gradient(90deg, #ff9aa2, #ffb7b2);
-    border-radius: 60% 40% 40% 60%;
-    animation: swim linear forwards;
-}
-
-/* 魚尾（簡單做一個） */
-.fish::after {
-    content: "";
-    position: absolute;
-    right: -5px;   
-    top: 50%;
-    transform: translateY(-50%);
-    width: 0;
-    height: 0;
-    border-top: 4px solid transparent;
-    border-bottom: 4px solid transparent;
-    border-right: 6px solid currentColor;
-}
-
-/* 游動動畫 */
-@keyframes swim {
-    0% {
-        transform: translateX(0) ; /* 反轉方向 */
-    }
-    100% {
-        transform: translateX(-120vw) ;
-    }
-}
-
-#bubbles {
+    background-size: cover; animation: oceanMoveX 40s linear infinite;
     z-index: 1;
 }
 
-#summon-display {
-    z-index: 5;
-    position: relative;
-    background: #fffbe6; 
-    padding: 25px; 
-    border-radius: 20px; 
-    width: 90%; 
-    text-align: center; 
-    box-shadow: 0 10px 25px rgba(0,0,0,0.3); 
-    margin-bottom: 20px; 
-    font-weight: bold; 
-    min-height: 80px; 
-    border: 5px solid #ffe58f; 
-    font-size: 1.6rem; 
-    color: #856404; 
-    display: flex; 
-    align-items: center; 
-    justify-content: center; 
-    line-height: 1.4; 
-    white-space: pre-wrap; 
-    box-sizing: border-box; 
-    transition: all 0.3s; 
+@keyframes oceanMoveX {
+    0% { background-position: center center; }
+    25% { background-position: calc(50% - 20px) center; }
+    75% { background-position: calc(50% + 20px) center; }
+    100% { background-position: center center; }
 }
 
-#table {
-    z-index: 5;
-    position: relative;
-    display: flex; 
-    gap: 15px; 
-    min-height: 250px; 
-    align-items: center; 
-    width: 95%; 
-    justify-content: center; 
-    overflow-x: auto; 
-}
+#bubbles { position: absolute; top: 0; left: 0; width: 100%; height: 100%; overflow: hidden; pointer-events: none; z-index: 2; }
+.bubble { position: absolute; bottom: 0; width: 10px; height: 10px; background: rgba(200, 220, 255, 0.5); border-radius: 50%; box-shadow: 0 0 8px rgba(200, 220, 255, 0.6), inset 0 0 5px rgba(255,255,255,0.5); animation: rise 6s linear forwards; }
+@keyframes rise { 0% { transform: translateY(0); opacity: 0.6; } 100% { transform: translateY(-300px); opacity: 0; } }
 
-#deck-info { 
-    position: absolute; 
-    top: 15px; 
-    right: 20px; 
-    background: rgba(0,0,0,0.4); 
-    color: white; 
-    padding: 8px 20px; 
-    border-radius: 30px; 
-    font-size: 1.1rem; 
-    font-weight: bold; 
-    z-index: 6;
-}
+#fish-layer { position: absolute; width: 100%; height: 100%; pointer-events: none; overflow: hidden; z-index: 1; }
+.fish { position: absolute; right: -80px; width: 20px; height: 10px; border-radius: 60% 40% 40% 60%; animation: swim linear forwards; }
+.fish::after { content: ""; position: absolute; right: -5px; top: 50%; transform: translateY(-50%); width: 0; height: 0; border-top: 4px solid transparent; border-bottom: 4px solid transparent; border-right: 6px solid currentColor; }
 
+@keyframes swim { 0% { transform: translateX(0); } 100% { transform: translateX(-120vw); } }
+
+#summon-display { z-index: 5; position: relative; background: #fffbe6; padding: 25px; border-radius: 20px; width: 90%; text-align: center; box-shadow: 0 10px 25px rgba(0,0,0,0.3); margin-bottom: 20px; font-weight: bold; min-height: 80px; border: 5px solid #ffe58f; font-size: 1.7rem; color: #856404; display: flex; align-items: center; justify-content: center; line-height: 1.4; white-space: pre-wrap; box-sizing: border-box; transition: all 0.3s; }
+#table { z-index: 5; position: relative; display: flex; gap: 15px; min-height: 250px; align-items: center; width: 95%; justify-content: center; overflow-x: auto; }
+#deck-info { position: absolute; top: 15px; left: 20px; background: rgba(252, 230, 127, 0.6); color: black; padding: 8px 20px; border-radius: 30px; font-size: 1.1rem; font-weight: bold; z-index: 5; }
+
+/* 玩家區：磨砂玻璃設計 */
 #player-zone { 
-    background: white; 
-    padding: 15px; 
-    border-top: 10px solid var(--p); 
+    background: linear-gradient(180deg, rgba(255,255,255,0.4) 0%, rgba(224, 242, 241, 0.8) 100%);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    padding: 15px; border-top: 2px solid rgba(255,255,255,0.6); 
     transition: all 0.3s; 
+    border-radius: 25px 25px 0 0;
+    box-shadow: 0 -8px 25px rgba(0,0,0,0.15);
+    position: relative;
+    z-index: 10;
+}
+.hand { display: flex; overflow-x: auto; gap: 15px; padding-bottom: 10px; min-height: 270px; align-items: flex-end; -webkit-overflow-scrolling: touch; }
+
+/* 預覽放大卡牌專用 */
+#card-preview-overlay {
+    position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+    background: rgba(0,0,0,0.7); z-index: 4500;
+    display: none; justify-content: center; align-items: center;
+    backdrop-filter: blur(5px);
+}
+#card-preview-container {
+    transform: scale(2);
+    transition: transform 0.2s;
+    justify-content: center;
+    align-items: center;
+    cursor: pointer;
+    filter: drop-shadow(0 15px 25px rgba(0,0,0,0.5));
+}
+#card-preview-container .card {
+    margin: 0; /* 移除額外邊距確保置中完美 */
 }
 
-.hand { 
-    display: flex; 
-    overflow-x: auto; 
-    gap: 15px; 
-    padding-bottom: 10px; 
-    min-height: 270px; 
-    align-items: flex-end; 
-    -webkit-overflow-scrolling: touch;
+.sub-btn { padding: 12px 35px; font-size: 1.6rem; background: rgba(255, 223, 186, 0.6); color: #00796b; border: 4px solid rgba(178, 223, 219, 0.5); border-radius: 30px; font-weight: bold; cursor: pointer; transition: 0.2s; opacity: 0.8; }
+.sub-btn:active { transform: scale(0.95); }
+.sub-btnd {
+    padding: 10px 22px;
+    font-size: 1.1rem;
+    background: rgba(255, 223, 186, 0.6);
+    color: #00796b;
+    border: 2px solid transparent;
+    border-radius: 20px;
+    cursor: pointer;
+    transition: all 0.15s ease;
 }
 
-.sub-btn {
-    padding: 12px 35px; 
-    font-size: 1.6rem; 
-    background: rgba(255, 223, 186, 0.6); 
-    color: #00796b; 
-    border: 4px solid (178, 223, 219, 0.5); 
-    border-radius: 30px;
-    font-weight: bold; 
-    cursor: pointer; 
-    transition: 0.2s; 
-    opacity: 0.8;
-}
-
-.sub-btn:active { 
-    transform: scale(0.95); 
-}
-
-.ctrl-btn {
-    padding: 5px 10px; 
-    background: rgba(255,255,255,0.6); 
-    border: none; 
-    border-radius: 20px; 
-    font-weight: bold; 
-    cursor: pointer; 
-    font-size: 1rem;
-}
-
-/* 修正 info-overlay 的預設顯示問題 */
-#info-overlay { 
-    display: none; 
-}
-
-.card { 
-    width: 165px; 
-    height: 245px; 
-    border-radius: 15px; 
-    border: 2px solid #bbb; 
-    background: white; 
-    flex-shrink: 0; 
-    display: flex; 
-    flex-direction: column; 
-    cursor: pointer; 
-    box-shadow: 4px 4px 10px rgba(0,0,0,0.15); 
-    transition: transform 0.2s, filter 0.2s; 
-    overflow: hidden; 
-    touch-action: manipulation; 
-}
-
-.card:active {
-    transform: scale(0.92);
+/* 👉 按下瞬間 */
+.sub-btnd:active {
+    transform: scale(0.95);
     filter: brightness(0.9);
 }
 
-.card-n {
-    font-weight: 900;
-    text-align: center;
-    padding: 12px 5px;
-    border-bottom: 2px solid #eee;
-    font-size: 1.9rem;
-    color: #444;
-    background-color: #fff0f5;
-    background-image: url("data:image/svg+xml,%3Csvg width='40' height='40' viewBox='0 0 40 40' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M10 20c2-5 8-5 10 0s-8 5-10 0zM18 18c2 0 3 2 0 4' fill='none' stroke='%23ffb3d9' stroke-width='1'/%3E%3C/svg%3E");
-    background-repeat: repeat;
-    background-blend-mode: multiply;
-    opacity: 0.9;
+/* 👉 選中狀態（持續） */
+.sub-btnd.active {
+    background: #00796b;
+    color: white;
+    border: 2px solid #004d40;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.25);
 }
 
+
+.ctrl-btn { padding: 5px 10px; background: rgba(255,255,255,0.6); border: none; border-radius: 20px; font-weight: bold; cursor: pointer; font-size: 1rem; }
+#info-overlay { display: none; }
+
+.card { width: 165px; height: 245px; border-radius: 15px; border: 2px solid #bbb; background: white; flex-shrink: 0; display: flex; flex-direction: column; cursor: pointer; box-shadow: 4px 4px 10px rgba(0,0,0,0.15); transition: transform 0.2s, filter 0.2s; overflow: hidden; touch-action: manipulation; }
+.card-n { font-weight: 900; text-align: center; padding: 12px 5px; border-bottom: 2px solid #eee; font-size: 1.9rem; color: #444; background-color: #fff0f5; background-image: url("data:image/svg+xml,%3Csvg width='40' height='40' viewBox='0 0 40 40' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M10 20c2-5 8-5 10 0s-8 5-10 0zM18 18c2 0 3 2 0 4' fill='none' stroke='%23ffb3d9' stroke-width='1'/%3E%3C/svg%3E"); background-repeat: repeat; background-blend-mode: multiply; opacity: 0.9; }
 .light-1 { border-top: 20px solid #77D9A8 !important; } 
 .light-2 { border-top: 20px solid #f9e1a9 !important; } 
 .light-3 { border-top: 20px solid #ffb3ba !important; }        
+.card-i { padding: 8px; flex-grow: 1; color: #222; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; background-image: radial-gradient(#f1f1f1 1px, transparent 1px); background-size: 15px 15px; }
+.card:active { transform: scale(0.92); filter: brightness(0.9); }
 
-.card-i {
-    padding: 8px;
-    flex-grow: 1;
-    color: #222;
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    align-items: center;
-    text-align: center;
-    background-image: radial-gradient(#f1f1f1 1px, transparent 1px);
-    background-size: 15px 15px;
-}
-
-/* --- 標籤樣式優化：字體加大 --- */
-.tag {
-    display: inline-block;
-    padding: 4px 10px;
-    border-radius: 8px;
-    font-size: 1.1rem; /* 從原本約 0.85 放大到 1.1 */
-    margin: 2px;
-    color: white;
-    font-weight: bold;
-    text-shadow: 1px 1px 1px rgba(0,0,0,0.3);
-    white-space: nowrap;
-    box-shadow: 1px 1px 3px rgba(0,0,0,0.1);
-    line-height: 1.2;
-}
-
-/* 顏色定義保持不變 */
+.tag { display: inline-block; padding: 4px 10px; border-radius: 8px; font-size: 1.1rem; margin: 2px; color: white; font-weight: bold; text-shadow: 1px 1px 1px rgba(0,0,0,0.3); white-space: nowrap; box-shadow: 1px 1px 3px rgba(0,0,0,0.1); line-height: 1.2; }
 .tag-spring { background-color: #f48fb1; } 
 .tag-summer { background-color: #ffd54f; color: #5d4037; } 
 .tag-autumn { background-color: #ff8a65; } 
 .tag-winter { background-color: #4fc3f7; } 
-.tag-all    { background-color: #90a4ae; }    
-.tag-eco    { background-color: #1B5E20; }    
-.tag-warn   { background-color: #ba68c8; }   
+.tag-all { background-color: #90a4ae; }    
+.tag-eco { background-color: #1B5E20; }    
+.tag-warn { background-color: #ba68c8; }   
 .tag-migratory { background-color: #8B0000; } 
 .tag-sedentary { background-color: #8d6e63; } 
-.tag-coastal   { background-color: #FBC02D; color: #5D4037 !important; }  
-.tag-ocean     { background-color: #1565c0; }  
-.tag-farm      { background-color: #66bb6a; }  
+.tag-coastal { background-color: #FBC02D; color: #5D4037 !important; }  
+.tag-ocean { background-color: #1565c0; }  
+.tag-farm { background-color: #66bb6a; }  
+.is-not-valid { filter: brightness(0.6) grayscale(0.2); }
+.card.is-valid { transform: translateY(-5px); box-shadow: 0 5px 15px rgba(0,0,0,0.3); }
 
-.is-not-valid { 
-    filter: brightness(0.6) grayscale(0.2); 
-}
-
-.card.is-valid { 
-    transform: translateY(-5px); 
-    box-shadow: 0 5px 15px rgba(0,0,0,0.3); 
-}
-
-/* 手機版標籤同步優化 */
+/* 手機版調整 */
 @media (max-width: 768px) {
-    #header { 
-        font-size: 1.3rem; 
-        padding: 10px; 
+    #header { font-size: 1.3rem; padding: 10px; }
+	#log-btn {
+        font-size: 0.8rem;
+        padding: 4px 10px;
+        top: 5px;      /* 與手機版 #deck-info 高度一致 */
+        right: 5px;     /* 與右側的 5px 對稱 */
+        height: auto;  /* 讓高度隨文字調整 */
     }
-    #log { 
-        height: 80px; 
-        font-size: 0.95rem; 
-        padding: 8px; 
-        margin: 5px; 
-        border-width: 2px; 
+	.sub-menu {
+        flex-direction: column;
+        align-items: center;
     }
-    .char-area { 
-        padding: 2px 5px; 
-    }
-    .box { 
-        font-size: 0.95rem; 
-        padding: 6px 2px; 
-        margin: 3px; 
-        border-width: 3px; 
-        border-radius: 8px; 
-    }
-    #ocean { 
-        margin: 5px; 
-        border-radius: 12px; 
-    }
-    #deck-info { 
-        font-size: 0.8rem; 
-        padding: 4px 10px; 
-        top: 5px; 
-        right: 5px; 
-        background: rgba(0, 0, 0, 0.2); 
-    }
-    #summon-display { 
-        font-size: 1.05rem; 
-        padding: 10px; 
-        width: 92%; 
-        min-height: 50px; 
-        margin-bottom: 5px; 
-        border-width: 3px; 
-        border-radius: 12px; 
-    }
-    #table { 
-        min-height: 122px; 
-        gap: 6px; 
-    } 
-    #player-zone { 
-        padding: 8px; 
-        border-top-width: 6px; 
-    }
-    .hand { 
-        min-height: 126px; 
-        gap: 6px; 
-        padding-bottom: 5px; 
-    } 
-    .card { 
-        width: 74px; 
-        height: 115px; 
-        border-radius: 8px; 
-        border-width: 1px; 
-    }
-    .card-n { 
-        font-size: 0.8rem; 
-        padding: 4px 1px; 
-        border-bottom-width: 1px; 
-    }
-    .card-i { 
-        padding: 2px; 
-    }
-    .tag { 
-        font-size: 0.6rem; 
-        padding: 2px 4px; 
-        border-radius: 4px; 
-        margin: 1px; 
-        line-height: 1.1;
-    } /* 手機版也略微調大 */
-    .light-1, .light-2, .light-3 { 
-        border-top-width: 8px; 
-    }
-    #real-start-btn { 
-        padding: 15px 40px; 
-        font-size: 1.8rem; 
-    }
+    .char-area { padding: 5px 2px; }
+    .avatar-img { width: 40px; height: 40px; font-size: 1.3rem; border-width: 2px; }
+    .ai-name { font-size: 0.85rem; }
+    #ocean { margin: 5px; border-radius: 12px; }
+    #deck-info { font-size: 0.8rem; padding: 4px 10px; top: 5px; left: 5px; background: rgba(252, 230, 127, 0.6); }
+    #summon-display { font-size: 1.05rem; padding: 10px; width: 92%; min-height: 50px; margin-bottom: 5px; border-width: 3px; border-radius: 12px; }
+    #table { min-height: 122px; gap: 6px; } 
+    #player-zone { padding: 8px; border-radius: 15px 15px 0 0; }
+    .hand { min-height: 126px; gap: 6px; padding-bottom: 5px; } 
+    .card { width: 74px; height: 115px; border-radius: 8px; border-width: 1px; }
+    .card-n { font-size: 0.8rem; padding: 4px 1px; border-bottom-width: 1px; }
+    .card-i { padding: 2px; }
+    .tag { font-size: 0.6rem; padding: 2px 4px; border-radius: 4px; margin: 1px; line-height: 1.1; } 
+    .light-1, .light-2, .light-3 { border-top-width: 8px; }
+    #real-start-btn { padding: 15px 40px; font-size: 1.8rem; }
+    #card-preview-container { transform: scale(2.2); } /* 手機上原卡牌較小，縮放可以稍大 */
 }
 
 @keyframes playCardAnim {
-    0% { 
-        transform: translateY(100px) scale(0.5); 
-        opacity: 0; 
+    0% { transform: translateY(100px) scale(0.5); opacity: 0; }
+    70% { transform: translateY(-10px) scale(1.1); }
+    100% { transform: translateY(0) scale(1); opacity: 1; }
+}
+.card-played { animation: playCardAnim 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards !important; transition: none !important; }
+
+#chat-layer {
+    position: fixed;
+    top: 70px;
+    left: 0;
+    width: 100%;
+    pointer-events: none;
+    z-index: 2500;
+}
+
+.chat-bubble {
+    position: absolute;
+    background: white;
+    padding: 8px 10px;
+    border-radius: 15px;
+    font-size: 0.9rem;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+    white-space: nowrap;
+    animation: fadeInOut 3s ease forwards;
+}
+
+@keyframes fadeInOut {
+    0% { opacity: 0; transform: translateY(10px); }
+    15% { opacity: 1; }
+    85% { opacity: 1; }
+    100% { opacity: 0; transform: translateY(-10px); }
+}
+
+.chat-bubble {
+    max-width: 200px;
+    white-space: normal;
+    word-break: break-word;
+}
+
+/* 簡單的呼吸發光效果 */
+@keyframes breathe {
+    from { box-shadow: 0 0 3px #81d4fa; }
+    to { box-shadow: 0 0 20px #4fc3f7; }
+}
+
+/* 輪到玩家時套用的類別 */
+.my-turn {
+    animation: breathe 1.5s infinite alternate;
+    border-top: 4px solid #4fc3f7 !important;
+}
+
+.game-title {
+    font-size: 3rem;
+    font-weight: 900;
+    color: white;
+    text-align: center;
+    text-shadow: 
+        0 0 10px rgba(255,255,255,0.8),
+        0 0 20px rgba(79,195,247,0.8),
+        0 0 40px rgba(3,169,244,0.8);
+    margin-bottom: 10px;
+}
+
+.subtitle {
+    font-size: 1rem;
+    opacity: 0.8;
+    letter-spacing: 3px;
+}
+
+#real-start-btn {
+    padding: 18px 60px;
+    font-size: 2rem;
+    border-radius: 50px;
+    border: none;
+
+    background: linear-gradient(135deg, #ffb74d, #ff7043);
+    color: white;
+
+    box-shadow:
+        0 5px 15px rgba(0,0,0,0.3),
+        0 0 20px rgba(255,183,77,0.6);
+
+    transition: all 0.2s;
+}
+
+#real-start-btn:hover {
+    transform: scale(1.08);
+}
+
+#real-start-btn:active {
+    transform: scale(0.95);
+}
+
+.sub-menu {
+    display: flex;
+    gap: 20px;
+    justify-content: center;
+    margin-top: 20px;
+}
+
+.sub-btn {
+    padding: 12px 30px;
+    font-size: 1.2rem;
+
+    border-radius: 30px;
+    border: 2px solid rgba(255,255,255,0.5);
+
+    background: rgba(255,255,255,0.15);
+    color: white;
+
+    backdrop-filter: blur(5px);
+
+    transition: 0.2s;
+}
+
+.sub-btn:hover {
+    background: rgba(255,255,255,0.3);
+    transform: translateY(-2px);
+}
+
+.mbubble {
+    position: absolute;
+    bottom: -100px;
+    width: 20px;
+    height: 20px;
+    background: rgba(255,255,255,0.3);
+    border-radius: 50%;
+    animation: floatUp 10s infinite ease-in;
+}
+
+.mbubble:nth-child(1) {
+    left: 20%;
+    animation-duration: 8s;
+}
+.mbubble:nth-child(2) {
+    left: 50%;
+    animation-duration: 12s;
+}
+.mbubble:nth-child(3) {
+    left: 80%;
+    animation-duration: 10s;
+}
+
+@keyframes floatUp {
+    0% {
+        transform: translateY(0);
+        opacity: 0.5;
     }
-    70% { 
-        transform: translateY(-10px) scale(1.1); 
-    }
-    100% { 
-        transform: translateY(0) scale(1); 
-        opacity: 1; 
+    100% {
+        transform: translateY(-120vh);
+        opacity: 0;
     }
 }
 
-.card-played { 
-    animation: playCardAnim 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards !important; 
-    transition: none !important; 
+.welcome-container {
+    position: relative;
+    z-index: 2;
+    text-align: center;
+}
+
+.difficulty-select {
+    margin-bottom: 25px;
+    text-align: center;
+}
+
+.diff-title {
+    color: white;
+    margin-bottom: 10px;
+    font-weight: bold;
+    letter-spacing: 2px;
+	font-size: 2rem;
+}
+
+.diff-options {
+    display: flex;
+    gap: 10px;
+    justify-content: center;
+}
+
+.tutorial-highlight {
+    position: relative;
+    z-index: 5000;
+    box-shadow: 0 0 0 5px rgba(255,255,0,0.8),
+                0 0 25px rgba(255,255,0,0.8);
+    border-radius: 15px;
+}
+
+#tutorial-tooltip {
+    position: fixed;
+    z-index: 6000;
+    background: rgba(0,0,0,0.8);
+    color: white;
+    padding: 12px 16px;
+    border-radius: 12px;
+    font-size: 1.1rem;
+    max-width: 260px;
+    text-align: center;
+    pointer-events: none;
+    transition: all 0.2s;
+	display: none;
 }
