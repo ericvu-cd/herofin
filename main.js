@@ -1,12 +1,19 @@
 let gameDifficulty = 0.7;
 let speakingAI = null;
+let showSummaryMode = true; // 預設開啟結算頁面
+
+const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+// 當視窗大小改變時，觸發 updateHandArrows 函式重新計算
+window.addEventListener('resize', () => {
+    updateHandArrows();
+});
 
 function setDifficulty(d, btn) {
     gameDifficulty = d;
 	document.querySelectorAll('.sub-btnd').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
 }
-// <button class="sub-btnd active" onclick="setDifficulty(0.7, this)">普通</button>
 
 // --- 故事與說明功能 ---
 let storyIdx = 1;
@@ -46,7 +53,9 @@ function openStory() {
     storyIdx = 1;
     updateStory();
     const overlay = document.getElementById("story-overlay");
-    overlay.style.display = "block";
+    overlay.style.display = "flex"; // 顯示
+    overlay.style.visibility = "visible"; // 確保可見
+    overlay.style.opacity = "1"; // 確保不透明
     startStoryTimer();
 
     // 綁定觸控事件
@@ -101,7 +110,9 @@ function closeStory() {
 // 說明功能
 function openInfo() {
     const infoEl = document.getElementById("info-overlay");
-    infoEl.style.display = "flex";
+	infoEl.style.display = "flex";
+    infoEl.style.visibility = "visible";
+    infoEl.style.opacity = "1";
     
     fetch('info.txt')
         .then(response => {
@@ -227,7 +238,15 @@ function closePreview() {
 function renderUI() {
     players.forEach((p, i) => { 
         if(i > 0) {
-            const cardsIcon = `<span style="letter-spacing: -5px; display: inline-block; white-space: nowrap;">${"🎴".repeat(p.hand.length)}</span>`;
+			const isLastCard = p.hand.length === 1;
+            const dangerClass = isLastCard ? "ai-last-card-danger" : "";
+            
+            // 將閃爍類別套用在包覆 🎴 的容器上
+            const cardsIcon = `
+                <span class="${dangerClass}" style="letter-spacing: -5px; display: inline-block; white-space: nowrap;">
+                    ${"🎴".repeat(p.hand.length)}
+                </span>`;
+            
             document.getElementById(p.id).innerHTML = `
                 <div class="avatar-img">${p.avatar}</div>
                 <div class="ai-name">${p.n}</div>
@@ -236,9 +255,16 @@ function renderUI() {
         }
     });
 
-    document.getElementById("deck-info").innerText = `剩餘${deckS.length}次召喚`;
+// --- 優化 3: 牌組告急閃爍 ---
+    const deckInfo = document.getElementById("deck-info");
+    deckInfo.innerText = `剩餘${deckS.length}次召喚`;
+    if (deckS.length <= 5) {
+        deckInfo.classList.add("deck-danger");
+    } else {
+        deckInfo.classList.remove("deck-danger");
+    }
     
-const handEl = document.getElementById("player-hand");
+	const handEl = document.getElementById("player-hand");
     handEl.innerHTML = "";
     
     const isNormalTask = currentS && !currentS.isMazu && phase === "PLAYER_TURN" && callerIdx === 0;
@@ -260,6 +286,8 @@ const handEl = document.getElementById("player-hand");
     });
 	// 只要階段包含 PLAYER，就幫玩家區加上 my-turn 類別
     document.getElementById("player-zone").classList.toggle("my-turn", phase.includes("PLAYER"));
+	
+	setTimeout(updateHandArrows, 50);
 }
 
 // 確保點擊遮罩背景也能關閉預覽
@@ -382,7 +410,7 @@ function createFish() {
 setInterval(createFish, 4000);
 
 function initGame() {
-
+	document.body.classList.add('game-started');
     // ✅ 改用加入 class 的方式觸發淡出
     const welcomeScreen = document.getElementById("welcome-screen");
     welcomeScreen.classList.add("fade-out");
@@ -392,16 +420,19 @@ function initGame() {
 
     // 啟動音樂與日誌
     document.getElementById("music-control").style.display = "flex";
+	document.getElementById("report-control").style.display = "flex";
     document.getElementById("log-btn").style.display = "flex";
     const music = document.getElementById("bgm");
     music.play().then(() => {
         music.volume = bgmVolume;
     }).catch(err => console.log("播放受阻"));
 
+	document.getElementById('player-hand').addEventListener('scroll', updateHandArrows);
+
     // 直接切換畫面並開始遊戲
     setTimeout(() => {
         startGame();
-    }, 2500); // 保留 0.5 秒的淡出過渡效果
+    }, 3500); // 保留 3.5 秒的淡出過渡效果
 }
 
 function startGame() {
@@ -508,6 +539,8 @@ function handleMazuAI(caller) {
 
         let card = caller.hand.pop();
         let target = players.filter(p => p !== caller).sort((a,b) => a.hand.length - b.hand.length)[0];
+		
+		showMazuGiftEffect(caller.n, target.n, card); // 顯示特寫		
 
         // 1. 送牌者先說話
         aiTalkMazuGive(caller, target, card);
@@ -525,20 +558,21 @@ function handleMazuAI(caller) {
             
             renderUI();
 
-            // 4. 全部說完後，再停頓 2 秒才結束回合
-            setTimeout(finishRound, 2000);
+            // 4. 全部說完後，再停頓 3 秒才結束回合
+            setTimeout(finishRound, 3000);
             
         }, 2000); // 這裡是兩次說話之間的 2 秒停頓
 
     }, 1000);
 }
 
-function playerAction(idx) {
+async function playerAction(idx) {
     if (navigator.vibrate) navigator.vibrate(30);
 
     if (phase === "PLAYER_MAZU") {
         let card = players[0].hand.splice(idx, 1)[0];
         let target = players.filter((p, i) => i !== 0).sort((a,b) => a.hand.length - b.hand.length)[0];
+		showMazuGiftEffect("你", target.n, card);
         target.hand.push(card);
         playPopSfx();
         addLog(`✨ 你分享了【${card.n}】給 ${target.n}！`, "success");
@@ -560,50 +594,126 @@ function playerAction(idx) {
         renderUI();
 		renderTable();
         phase = "AI_FOLLOWING";
-        
-        setTimeout(() => {
-            players.forEach((p, pi) => { 
-                if (p.isAI && pi !== callerIdx) {
-                    let lastCard = table[table.length - 1].card;
-					let matchIdx = aiChooseCard(p, 0.7);
-                    aiMove(pi, matchIdx); 
-                }
-            });
-            showResult();
-        }, 800);
+		
+		await new Promise(resolve => setTimeout(resolve, 800));
+        // 【關鍵修改】改用 for...of 才能支援 await
+        for (let pi = 0; pi < players.length; pi++) {
+            const p = players[pi];
+            
+            // 排除玩家本人 (pi === 0) 且如果是 AI 且不是目前的召喚者 (如果是 AI 跟牌)
+            if (p.isAI && pi !== callerIdx) {
+                let matchIdx = aiChooseCard(p, 0.7);
+                
+                // 每位 AI 出牌前先等 0.6 秒
+                await new Promise(resolve => setTimeout(resolve, 600));
+                
+                aiMove(pi, matchIdx); 
+            }
+        }
+
+        // 所有 AI 出完後再等 0.2 秒進結果
+        await new Promise(resolve => setTimeout(resolve, 200));
+        showResult();
+		
     }
 }
 
 function aiMove(pI, cI) {
     const p = players[pI];
+	if (!p.hand[cI]) return; // 安全機制：確保這位置有牌
+	
     const f = p.hand.splice(cI, 1)[0];
 
     playPopSfx();
     table.push({ pIdx: pI, card: f });
     renderTable();
+	renderUI();    // 更新 AI 手上的卡片數量 (確保閃爍的 🎴 會消失一張)
 
     let isCorrect = currentS && currentS.c ? currentS.c(f) : null;
 
     aiTalk(p, f, isCorrect);
 }
 
+// 建立一個全域或區域變數來儲存當前回合的結算資料
+let roundReport = [];
+
 function showResult() {
     phase = "RESULT";
-    if (callerIdx !== 0) addLog(`揭曉神祕召喚：${currentS.t.replace(/\n/g, " ")}`, "cmd");
-    document.getElementById("summon-display").innerText = "【召喚揭曉】\n" + currentS.t;
+    roundReport = []; 
+
     setTimeout(() => {
         table.forEach(t => {
-            if (currentS.c(t.card)) {
+            const isSuccess = currentS.c(t.card);
+            const player = players[t.pIdx];
+            const condText = currentS.t; 
+            
+            // 使用陣列來收集所有相關的特性
+            let featuresFound = [];
+
+            // 1. 檢查是否包含「燈號/永續等級」相關關鍵字
+            if (["燈", "綠", "黃", "紅"].some(k => condText.includes(k))) {
+                featuresFound.push(t.card.l === 1 ? "綠燈" : (t.card.l === 2 ? "黃燈" : "紅燈"));
+            }
+
+            // 2. 檢查是否包含「捕撈方式」相關關鍵字
+            if (["網", "釣", "一支", "延繩", "圍網", "刺網", "籠具", "禁止捕撈", "標槍"].some(k => condText.includes(k))) {
+                featuresFound.push(t.card.m.join("、"));
+            }
+
+            // 3. 檢查是否包含「來源/產地」相關關鍵字
+            if (["養殖", "近海", "遠洋"].some(k => condText.includes(k))) {
+                featuresFound.push(t.card.d);
+            }
+
+            // 4. 檢查是否包含「季節」相關關鍵字
+            if (["春", "夏", "秋", "冬", "全年"].some(k => condText.includes(k))) {
+                featuresFound.push(t.card.s);
+            }
+
+            // 5. 檢查是否包含「棲息地」相關關鍵字
+            if (["洄游", "定棲", "底棲"].some(k => condText.includes(k))) {
+                featuresFound.push(t.card.h);
+            }
+
+            // 最終呈現字串：如果以上都沒對應到，預設顯示燈號；若有多項則用 " | " 隔開
+            let finalFeatureStr = featuresFound.length > 0 
+                ? featuresFound.join(" | ") 
+                : (t.card.l === 1 ? "綠燈" : (t.card.l === 2 ? "燈" : "紅燈"));
+
+            roundReport.push({
+                name: player.n,
+                fishName: t.card.n,
+                isSuccess: isSuccess,
+                feature: finalFeatureStr
+            });
+
+            if (isSuccess) {
                 playSuccessSfx();
-                addLog(`${players[t.pIdx].n} 成功送出【${t.card.n}】`, "success");
+                addLog(`${player.n} 成功送出【${t.card.n}】`, "success");
             } else {
-                players[t.pIdx].hand.push(t.card);
-                addLog(`${players[t.pIdx].n} 的【${t.card.n}】不符規律，退回。`);
+                player.hand.push(t.card);
+                addLog(`${player.n} 的【${t.card.n}】不符規律，退回。`);
             }
         });
+
         renderUI();
-        setTimeout(finishRound, 5000);
-    }, 1000);
+        
+        let win = players.find(p => p.hand.length === 0);
+		if (win) {
+            setTimeout(() => showWinScreen(win), 1000);
+            return;
+        }
+
+        // --- 關鍵修改：控制下一步去向 ---
+        if (showSummaryMode) {
+            // 模式 A：顯示詳細報告彈窗
+            setTimeout(showRoundSummary, 1000); 
+        } else {
+            // 模式 B：快速模式
+            // 停頓 1.5 秒讓玩家看清場上的 ✔️/❌，然後自動清理進入下一輪
+            setTimeout(finishRound, 1500); 
+        }
+	}, 1000);
 }
 
 function showWinScreen(winner) {
@@ -628,10 +738,107 @@ font-size: 2rem; margin-bottom: 15px; letter-spacing: 2px;">${title}</h1>
 
 function finishRound() {
     let win = players.find(p => p.hand.length === 0);
-    if (win) { showWinScreen(win); return; }
+    if (win) { 
+        showWinScreen(win); 
+        return; 
+    }
+
+    // 檢查是否「不」是媽祖卡
+    if (currentS && !currentS.isMazu) {
+        showRoundSummary(); // 呼叫彈出視窗
+    } else {
+        // 如果是媽祖卡，直接進入下一回合
+        proceedToNextRound();
+    }
+}
+
+// 新增：處理下一回合的邏輯轉換
+function proceedToNextRound() {
     callerIdx = (callerIdx + 1) % 4;
     phase = "WAIT";
     autoStep();
+}
+
+// 新增：彈出視窗函式
+function showRoundSummary() {
+		
+	if (!showSummaryMode) {
+        proceedToNextRound(); // 或 finishRound()，視您的架構而定
+        return;
+    }
+	
+    const overlay = document.createElement("div");
+    overlay.id = "round-summary-overlay";
+    overlay.style = `
+        position: fixed; top: 0; left: 0; width: 100%; height: 100%; 
+        background: rgba(0,0,0,0.7); display: flex; justify-content: center; 
+        align-items: center; z-index: 4000; backdrop-filter: blur(4px);
+    `;
+
+    const reportHtml = roundReport.map(r => `
+        <div style="display: flex; align-items: center; padding: 10px 0; border-bottom: 1px solid #eee; text-align: left;">
+            <div style="font-size: 1.2rem; margin-right: 15px; width: 25px;">
+                ${r.isSuccess ? '<span style="color: #2ecc71;">✔️</span>' : '<span style="color: #e74c3c;">❌</span>'}
+            </div>
+            <div style="flex-grow: 1;">
+                <span style="font-weight: bold; color: #333;">${r.name}</span>：
+                <span>${r.fishName}</span>
+                <span style="
+                    margin-left: 8px; 
+                    padding: 2px 8px; 
+                    background: ${r.isSuccess ? '#d7ded9' : '#d7ded9'}; 
+                    color: ${r.isSuccess ? '#247173' : '#c62828'}; 
+                    border-radius: 4px; 
+                    font-size: 0.85rem;
+                    border: 1px solid ${r.isSuccess ? '#247173' : '#247173'};
+                ">
+                    ${r.feature}
+                </span>
+            </div>
+        </div>
+    `).join('');
+
+    const modal = document.createElement("div");
+    modal.style = `
+        background: white; padding: 25px; border-radius: 20px; 
+        width: 90%; max-width: 450px; box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+    `;
+	modal.classList.add("summary-pop-anim"); 
+    
+    // 設定彈窗樣式 (原有的樣式)
+    modal.style.background = "white";
+    modal.style.padding = "25px";
+    modal.style.borderRadius = "20px";
+    modal.style.width = "90%";
+    modal.style.maxWidth = "450px";
+    modal.style.boxShadow = "0 10px 30px rgba(0,0,0,0.3)";
+	
+
+    modal.innerHTML = `
+        <h2 style="color: #00796b; margin-top: 0; font-size: 1.1rem;">回合成果結算</h2>
+        
+        <div style="background: #f1f8e9; padding: 10px; border-radius: 10px; margin-bottom: 15px; text-align: left;">
+            <div style="font-weight: bold; color: #388e3c; font-size: 0.9rem;">📜 本回召喚要求：</div>
+            <div style="font-size: 1rem; color: #333; margin-top: 4px;">${currentS.t}</div>
+        </div>
+
+        <div style="margin-bottom: 20px;">
+            ${reportHtml}
+        </div>
+
+        <button id="close-summary-btn" style="
+            width: 100%; padding: 10px; background: #FFDFBA; border: none; 
+            border-radius: 50px; font-weight: bold; color: #d35400; cursor: pointer;
+        ">整理魚獲，繼續冒險</button>
+    `;
+
+    overlay.appendChild(modal);
+    document.body.appendChild(overlay);
+
+    document.getElementById("close-summary-btn").onclick = () => {
+        overlay.remove();
+        proceedToNextRound();
+    };
 }
 
 function aiChooseCard(p) {
@@ -735,13 +942,77 @@ setTimeout(()=>{
     document.getElementById("welcome-screen").style.opacity = 1;
 }, 100);
 
-window.addEventListener('load', () => {
+// ✅ 修改後的穩定版本
+window.onload = () => {
     const welcome = document.getElementById("welcome-screen");
-    welcome.style.opacity = "0"; // 先設為 0
-    
-    // 強制瀏覽器重繪後再改回 1，達成淡入效果
-    setTimeout(() => {
-        welcome.style.transition = "opacity 1.2s ease";
+    if (welcome) {
+        // 直接讓它淡入，不要再用 setTimeout 延遲 100ms
         welcome.style.opacity = "1";
-    }, 100);
-});
+    }
+};
+
+function showMazuGiftEffect(fromName, toName, card) {
+    const effect = document.createElement("div");
+    effect.style = `
+        position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); 
+        background: white; border: 4px solid #FFD700; padding: 20px; border-radius: 15px; 
+        z-index: 5000; text-align: center; box-shadow: 0 0 30px rgba(0,0,0,0.3);
+        min-width: 200px;
+    `;
+    
+    // 獲取魚的特性標籤 (調用原本 main.js 裡的函式)
+    const tags = getFishTags(card);
+
+    effect.innerHTML = `
+        <div style="color:#D4AF37; font-weight:bold; font-size:1.2rem; margin-bottom:10px;">✨ 神明指示：分享資源 ✨</div>
+        <div style="margin-bottom:15px; font-size:1.3rem;"><strong>${fromName}</strong> 分享給 <strong>${toName}</strong></div>
+        <div class="card light-${card.l}" style="margin: 0 auto; pointer-events: none; transform: scale(1.1); float: none;">
+            <div class="card-n" style="font-size: 1.2rem;">${card.n}</div>
+            <div class="card-i" style="font-size: 0.9rem; margin-top: 5px; color: #555;">${tags}</div>
+        </div>
+    `;
+    
+    document.body.appendChild(effect);
+    
+    // 保持顯示 3 秒，讓玩家看清楚特性
+    setTimeout(() => {
+        effect.style.opacity = "0";
+        effect.style.transition = "opacity 0.5s";
+        setTimeout(() => effect.remove(), 1500);
+    }, 3000);
+}
+
+function toggleReportMode() {
+    showSummaryMode = !showSummaryMode;
+    const btn = document.getElementById("report-control");
+    if (showSummaryMode) {
+        btn.classList.remove("off");
+    } else {
+        btn.classList.add("off");
+    }
+}
+
+function updateHandArrows() {
+    const hand = document.getElementById('player-hand');
+    const leftArrow = document.getElementById('arrow-left');
+    const rightArrow = document.getElementById('arrow-right');
+
+    if (!hand || !leftArrow || !rightArrow) return;
+
+    // 1. 判斷是否「溢出」：內容寬度 > 容器寬度
+    const isOverflowing = hand.scrollWidth > hand.clientWidth;
+
+    if (isOverflowing) {
+        // 2. 如果溢出，根據滾動位置判斷顯示哪邊
+        // 往右滑了超過 5px 才顯示左箭頭
+        leftArrow.style.display = hand.scrollLeft > 5 ? 'flex' : 'none';
+        
+        // 還有超過 5px 的空間可以往右滑，才顯示右箭頭
+        const maxScroll = hand.scrollWidth - hand.clientWidth;
+        rightArrow.style.display = (hand.scrollLeft < maxScroll - 5) ? 'flex' : 'none';
+    } else {
+        // 3. 沒溢出就全部隱藏
+        leftArrow.style.display = 'none';
+        rightArrow.style.display = 'none';
+    }
+}
