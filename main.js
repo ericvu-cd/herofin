@@ -1,7 +1,34 @@
-let gameDifficulty = 0.7;
-let speakingAI = null;
-let sfxEnabled = true;
+let gameDifficulty = 0.4;
+
+// ── 對話排隊系統 ──────────────────────────────
+const chatQueue = {
+    _q: [],
+    _timer: null,
+    _interval: 1800,
+
+    push(p, msg) {
+        this._q.push({ p, msg });
+        if (!this._timer) this._flush();
+    },
+
+    _flush() {
+        if (!this._q.length) { this._timer = null; return; }
+        const { p, msg } = this._q.shift();
+        showChat(p, msg);
+        this._timer = setTimeout(() => this._flush(), this._interval);
+    },
+
+    clear() {
+        this._q = [];
+        if (this._timer) { clearTimeout(this._timer); this._timer = null; }
+    }
+};
+
+let roundChatCount = 0; // 每回合對話上限計數器（上限 2）
+let sfxEnabled = sessionStorage.getItem("sfxEnabled") !== "false";
 let showSummaryMode = true; // 預設開啟結算頁面
+let roundReport = [];       // 每回合出牌結果紀錄
+let handFlipTimers = [];     // 手牌翻轉計時器
 
 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -10,13 +37,14 @@ function preloadImages(prefix, count) {
     for (let i = 1; i <= count; i++) {
         const img = new Image();
         img.src = `${prefix}${i}.jpg`;
+        img.decode().catch(() => {}); // 背景解碼，避免顯示時卡頓
     }
 }
 
-// 頁面載入後立即執行預載
-window.addEventListener('load', () => {
-    preloadImages('P', 6);  // 預載故事 P1-P6
-    preloadImages('F', 12); // 預載說明 F1-F12
+// DOMContentLoaded 即刻預載（比 load 早，不等 BGM/大圖載完）
+document.addEventListener('DOMContentLoaded', () => {
+    preloadImages('P', 9);  // 預載故事 P1-P9
+    preloadImages('F', 18); // 預載說明 F1-F18
     preloadFishImages();     // 預載所有魚圖片
     initOceanCaustics();     // 初始化海洋光束
 });
@@ -27,24 +55,14 @@ function preloadFishImages() {
     fishDB.forEach(f => {
         const img = new Image();
         img.src = `fishdb/${f.n}.png`;
+        img.decode().catch(() => {}); // 背景解碼，顯示時零延遲
     });
-}
-
-// 當視窗大小改變時，觸發 updateHandArrows 函式重新計算
-window.addEventListener('resize', () => {
-    updateHandArrows();
-});
-
-function setDifficulty(d, btn) {
-    gameDifficulty = d;
-	document.querySelectorAll('.sub-btnd').forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
 }
 
 // --- 故事與說明功能 ---
 let storyIdx = 1;
 let storyTimer = null;
-const totalStories = 6;
+const totalStories = 9;
 // 新增說明專用的背景音樂
 const infoBGM = new Audio('MZ.mp3'); 
 infoBGM.loop = true; // 設定循環播放
@@ -53,95 +71,17 @@ infoBGM.loop = true; // 設定循環播放
 let touchStartX = 0;
 let touchEndX = 0;
 
-// 新增：回前一頁的功能
 function prevStory() {
     stopStoryTimer();
-    if (storyIdx > 1) {
-        storyIdx--;
-        updateStory();
-        startStoryTimer(); // 重新開始自動換頁計時
-    }
+    if (storyIdx > 1) { storyIdx--; updateStory(); startStoryTimer(); }
 }
 
-// 判斷滑動方向
 function handleSwipe() {
-    const swipeThreshold = 50; // 滑動超過 50px 才觸發
     const diff = touchEndX - touchStartX;
-
-    if (diff < -swipeThreshold) {
-        // 向左滑 -> 下一頁 (Next)
-        nextStory();
-    } else if (diff > swipeThreshold) {
-        // 向右滑 -> 前一頁 (Prev)
-        prevStory();
-    }
+    if (diff < -50) nextStory();
+    else if (diff > 50) prevStory();
 }
 
-// 故事功能
-function openStory() {
-    storyIdx = 1;
-    updateStory();
-    const overlay = document.getElementById("story-overlay");
-    overlay.style.display = "flex"; // 顯示
-    overlay.style.visibility = "visible"; // 確保可見
-    overlay.style.opacity = "1"; // 確保不透明
-	
-	infoBGM.currentTime = 0; // 從頭播放
-    infoBGM.play().catch(e => console.log("音樂播放受阻，需使用者互動過才能播放:", e));
-	
-    startStoryTimer();
-
-    // 綁定觸控事件（用 on= 避免重複疊加）
-    overlay.ontouchstart = (e) => {
-        touchStartX = e.changedTouches[0].screenX;
-    };
-
-    overlay.ontouchend = (e) => {
-        touchEndX = e.changedTouches[0].screenX;
-        handleSwipe();
-    };
-}
-
-function updateStory() {
-    document.getElementById("story-img").src = `P${storyIdx}.jpg`;
-    document.getElementById("story-page-num").innerText = `${storyIdx} / ${totalStories}`;
-}
-
-function nextStory() {
-    stopStoryTimer();
-    if (storyIdx < totalStories) {
-        storyIdx++;
-        updateStory();
-        startStoryTimer();
-    } else {
-        closeStory();
-    }
-}
-
-function startStoryTimer() {
-    stopStoryTimer();
-    storyTimer = setTimeout(() => {
-        if (storyIdx < totalStories) {
-            storyIdx++;
-            updateStory();
-            startStoryTimer();
-        } else {
-            closeStory();
-        }
-    }, 10000); 
-}
-
-function stopStoryTimer() {
-    if (storyTimer) clearTimeout(storyTimer);
-}
-
-function closeStory() {
-    stopStoryTimer();
-    document.getElementById("story-overlay").style.display = "none";
-	infoBGM.pause();
-}
-
-// 說明功能
 // --- 說明功能變數 ---
 let infoIdx = 1;
 let infoTimer = null;
@@ -149,26 +89,16 @@ const totalInfo = 18;
 let infoTouchStartX = 0;
 let infoTouchEndX = 0;
 
+// 判斷滑動方向（左滑下一頁，右滑上一頁）
 function prevInfo() {
     stopInfoTimer();
-    if (infoIdx > 1) {
-        infoIdx--;
-        updateInfo();
-        startInfoTimer();
-    }
+    if (infoIdx > 1) { infoIdx--; updateInfo(); startInfoTimer(); }
 }
 
 function handleSwipeInfo() {
-    const swipeThreshold = 50; // 滑動超過 50px 才觸發
     const diff = infoTouchEndX - infoTouchStartX;
-
-    if (diff < -swipeThreshold) {
-        // 向左滑 -> 下一頁
-        nextInfo();
-    } else if (diff > swipeThreshold) {
-        // 向右滑 -> 前一頁
-        prevInfo();
-    }
+    if (diff < -50) nextInfo();
+    else if (diff > 50) prevInfo();
 }
 
 function openInfo() {
@@ -180,7 +110,9 @@ function openInfo() {
     overlay.style.opacity = "1";
 	
 	infoBGM.currentTime = 0; // 從頭播放
-    infoBGM.play().catch(e => console.log("音樂播放受阻，需使用者互動過才能播放:", e));
+    if (sfxEnabled) {
+        infoBGM.play().catch(e => console.log("音樂播放受阻，需使用者互動過才能播放:", e));
+    }
 	
     startInfoTimer();
 
@@ -243,6 +175,26 @@ function closeLog() {
 }
 
 let players = [], deckS = [], table = [], currentS = null, callerIdx = 0, phase = "WAIT";
+let initialHands = []; // 各局開始時的初始手牌快照，遊戲結束時寫入 LOG
+
+// 真正均勻的 Fisher-Yates 洗牌（取代有偏的 sort+random）
+function shuffle(arr) {
+    for (let i = arr.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [arr[i], arr[j]] = [arr[j], arr[i]];
+    }
+    return arr;
+}
+
+// UI 鎖定：等待動畫/AI計算時，攔截所有使用者觸控
+function lockUI() {
+    const el = document.getElementById("ui-lock");
+    if (el) el.style.display = "block";
+}
+function unlockUI() {
+    const el = document.getElementById("ui-lock");
+    if (el) el.style.display = "none";
+}
 
 // --- 標籤生成邏輯 ---
 function getFishTags(f) {
@@ -271,6 +223,35 @@ function getFishTags(f) {
     html += `<span class="tag ${dClass}">${f.d}</span>`;
 
     html += '</div>';
+    return html;
+}
+
+// 手牌反面標籤：輸出純 span 串，由 .card-back-tags 容器排版
+function getHandBackTags(f) {
+    let html = "";
+    const ecoMethods = ["一支釣", "定置", "養殖", "手釣", "棒受網", "籠具", "釣具", "標槍"];
+
+    if (f.s.includes("全年")) html += `<span class="tag tag-all">全年</span>`;
+    else {
+        if (f.s.includes("春")) html += `<span class="tag tag-spring">春</span>`;
+        if (f.s.includes("夏")) html += `<span class="tag tag-summer">夏</span>`;
+        if (f.s.includes("秋")) html += `<span class="tag tag-autumn">秋</span>`;
+        if (f.s.includes("冬")) html += `<span class="tag tag-winter">冬</span>`;
+    }
+
+    f.m.forEach(method => {
+        const isEco = ecoMethods.some(eco => method.includes(eco));
+        html += `<span class="tag ${isEco ? 'tag-eco' : 'tag-warn'}">${method}</span>`;
+    });
+
+    const hClass = f.h.includes("洄游") ? "tag-migratory" : "tag-sedentary";
+    html += `<span class="tag ${hClass}">${f.h}</span>`;
+
+    let dClass = "tag-coastal";
+    if (f.d.includes("遠洋")) dClass = "tag-ocean";
+    if (f.d.includes("養殖")) dClass = "tag-farm";
+    html += `<span class="tag ${dClass}">${f.d}</span>`;
+
     return html;
 }
 
@@ -311,7 +292,7 @@ function showCardPreview(idx, fish, isHand = true) {
 
     container.appendChild(card);
 
-    // 出牌按鈕（手牌且輪到玩家）
+    // 出牌模式：手牌 + 玩家回合 → 綠勾紅叉；閱覽模式 → 只有紅叉
     if (isHand && phase.includes("PLAYER")) {
         const controls = document.createElement("div");
         controls.className = "preview-controls";
@@ -328,6 +309,18 @@ function showCardPreview(idx, fish, isHand = true) {
 
         controls.appendChild(btnConfirm);
         controls.appendChild(btnCancel);
+        container.appendChild(controls);
+    } else {
+        // 閱覽模式：紅叉提早關閉（計時器仍會自動關閉）
+        const controls = document.createElement("div");
+        controls.className = "preview-controls";
+
+        const btnClose = document.createElement("button");
+        btnClose.className = "preview-btn btn-cancel";
+        btnClose.innerHTML = "❌";
+        btnClose.onclick = (e) => { e.stopPropagation(); closePreview(); };
+
+        controls.appendChild(btnClose);
         container.appendChild(controls);
     }
 
@@ -376,27 +369,76 @@ function renderUI() {
     
 	const handEl = document.getElementById("player-hand");
     handEl.innerHTML = "";
-    
+
+    // 清除所有舊翻轉計時器，避免疊加
+    handFlipTimers.forEach(t => clearInterval(t));
+    handFlipTimers = [];
+
     const isNormalTask = currentS && !currentS.isMazu && phase === "PLAYER_TURN" && callerIdx === 0;
-    const hasValid = isNormalTask && players[0].hand.some(f => currentS.c(f));
 
     players[0].hand.forEach((f, idx) => {
         const c = document.createElement("div");
         c.className = `card light-${f.l}`;
-        if (hasValid) {
-            if (currentS.c(f)) c.classList.add("is-valid");
-            else c.classList.add("is-not-valid");
+        const isValid = isNormalTask && currentS.c(f);
+
+        // 正面：魚名 + 魚圖
+        const front = document.createElement("div");
+        front.className = "card-front";
+        front.innerHTML = `<div class="card-n">${f.n}</div><div class="card-img"><img src="fishdb/${f.n}.png" alt="${f.n}" onerror="this.style.display='none'"></div>`;
+
+        // 反面：魚名 + 特性標籤
+        const back = document.createElement("div");
+        back.className = "card-back";
+        back.innerHTML = `<div class="card-n">${f.n}</div><div class="card-back-tags">${getHandBackTags(f)}</div>`;
+
+        c.appendChild(front);
+        c.appendChild(back);
+
+        if (isValid) {
+            const dot = document.createElement("span");
+            dot.className = "valid-dot";
+            c.appendChild(dot);
         }
-        c.innerHTML = `<div class="card-n">${f.n}</div><div class="card-i">${getFishTags(f)}</div>`;
-        
+
         // 手牌點擊：放大預覽，並帶有出牌功能
         c.onclick = () => showCardPreview(idx, f, true);
-        
+
+        // 每 5 秒翻轉；若卡片已離開 DOM 則自動清除
+        const timer = setInterval(() => {
+            if (c.isConnected) {
+                c.classList.toggle("flipped");
+            } else {
+                clearInterval(timer);
+            }
+        }, 5000);
+        handFlipTimers.push(timer);
+
         handEl.appendChild(c);
     });
-	// 只要階段包含 PLAYER，就幫玩家區加上 my-turn 類別
-    document.getElementById("player-zone").classList.toggle("my-turn", phase.includes("PLAYER"));
-	setTimeout(updateHandArrows, 50);
+    // 玩家回合時強高亮手牌區
+    const isMyTurn = phase === "PLAYER_TURN" || phase === "PLAYER_MAZU";
+    document.getElementById("player-zone").classList.toggle("my-turn", isMyTurn);
+    setTimeout(updateHandArrows, 50);
+
+    // 抽屜：玩家回合顯示上滑提示，非玩家回合隱藏
+    updateDrawerArrow(isMyTurn);
+}
+
+function updateHandArrows() {
+    const hand = document.getElementById('player-hand');
+    const leftArrow  = document.getElementById('arrow-left');
+    const rightArrow = document.getElementById('arrow-right');
+    if (!hand || !leftArrow || !rightArrow) return;
+
+    const isOverflowing = hand.scrollWidth > hand.clientWidth + 2;
+    if (isOverflowing) {
+        leftArrow.style.display  = hand.scrollLeft > 5 ? 'flex' : 'none';
+        const maxScroll = hand.scrollWidth - hand.clientWidth;
+        rightArrow.style.display = hand.scrollLeft < maxScroll - 5 ? 'flex' : 'none';
+    } else {
+        leftArrow.style.display  = 'none';
+        rightArrow.style.display = 'none';
+    }
 }
 
 // 確保點擊遮罩背景也能關閉預覽
@@ -425,55 +467,9 @@ function renderTable() {
     });
 }
 
-function playPopSfx() { 
-if (!sfxEnabled) return;
-try {
-        const ctx = new (window.AudioContext || window.webkitAudioContext)();
-        
-        // 1. 低頻震盪器 - 模擬撞擊的沉悶感
-        const osc = ctx.createOscillator();
-        const gainOsc = ctx.createGain();
-        
-        // 2. 雜訊緩衝區 - 模擬紙張摩擦的「刷」聲
-        const bufferSize = ctx.sampleRate * 0.05; // 只需要極短的 0.05 秒
-        const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
-        const data = buffer.getChannelData(0);
-        for (let i = 0; i < bufferSize; i++) {
-            data[i] = Math.random() * 2 - 1; // 白雜訊
-        }
-        const noise = ctx.createBufferSource();
-        noise.buffer = buffer;
-        const gainNoise = ctx.createGain();
 
-        // --- 設定低頻撞擊 (Oscillator) ---
-        osc.type = 'triangle'; // 使用三角波，比正弦波紮實一點
-        osc.frequency.setValueAtTime(150, ctx.currentTime); // 起始頻率較低
-        osc.frequency.exponentialRampToValueAtTime(40, ctx.currentTime + 0.08);
-        
-        gainOsc.gain.setValueAtTime(0.6, ctx.currentTime);
-        gainOsc.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.08);
 
-        // --- 設定摩擦雜訊 (Noise) ---
-        gainNoise.gain.setValueAtTime(0.3, ctx.currentTime);
-        gainNoise.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.05);
-
-        // --- 連接並啟動 ---
-        osc.connect(gainOsc);
-        gainOsc.connect(ctx.destination);
-        
-        noise.connect(gainNoise);
-        gainNoise.connect(ctx.destination);
-
-        osc.start();
-        noise.start();
-        
-        osc.stop(ctx.currentTime + 0.1);
-        noise.stop(ctx.currentTime + 0.1);
-        
-    } catch(e) {}
-	}
-function playMazuSfx() { if (!sfxEnabled) return; try { const ctx = new (window.AudioContext || window.webkitAudioContext)(); const osc = ctx.createOscillator(); const gain = ctx.createGain(); osc.type = 'sine'; osc.connect(gain); gain.connect(ctx.destination); osc.frequency.setValueAtTime(880, ctx.currentTime); osc.frequency.exponentialRampToValueAtTime(1760, ctx.currentTime + 0.4); gain.gain.setValueAtTime(0.3, ctx.currentTime); gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.6); osc.start(); osc.stop(ctx.currentTime + 0.6); } catch(e) {} }
-function playSuccessSfx() { if (!sfxEnabled) return; try { const ctx = new (window.AudioContext || window.webkitAudioContext)(); const osc = ctx.createOscillator(); const gain = ctx.createGain(); osc.type = 'triangle'; osc.connect(gain); gain.connect(ctx.destination); osc.frequency.setValueAtTime(523.25, ctx.currentTime); osc.frequency.setValueAtTime(659.25, ctx.currentTime + 0.1); gain.gain.setValueAtTime(0.2, ctx.currentTime); gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.3); osc.start(); osc.stop(ctx.currentTime + 0.3); } catch(e) {} }
+let logPlainText = []; // 純文字 log，供複製分析用
 
 function addLog(m, type="") {
     const l = document.getElementById("log-messages");
@@ -481,8 +477,40 @@ function addLog(m, type="") {
     if(type === "cmd") className += " log-cmd";
     if(type === "secret") className += " log-secret";
     if(type === "success") className += " log-success";
+    const rPrefix = roundCount > 0 ? `[R${roundCount}] ` : "";
+    // 純文字版本（移除 HTML 標籤）
+    const plainLine = `${rPrefix}${m.replace(/<[^>]*>/g, "")}`;
+    logPlainText.unshift(plainLine); // 同樣最新在前
     const prefix = roundCount > 0 ? `<span style="color:#aaa; font-size:0.85em;">[R${roundCount}]</span> ` : "";
-    l.innerHTML = `<div class="${className}">> ${prefix}${m}</div>` + l.innerHTML;
+    l.insertAdjacentHTML('afterbegin', `<div class="${className}">> ${prefix}${m}</div>`);
+}
+
+function copyLog() {
+    const text = logPlainText.join("\n");
+    const btn = document.getElementById("log-copy-btn");
+    navigator.clipboard.writeText(text).then(() => {
+        btn.textContent = "✓ 已複製";
+        btn.style.background = "#b9f6ca";
+        btn.style.color = "#1b5e20";
+        setTimeout(() => {
+            btn.textContent = "📋 複製";
+            btn.style.background = "";
+            btn.style.color = "";
+        }, 2000);
+    }).catch(() => {
+        // fallback：建立 textarea 手動選取
+        const ta = document.createElement("textarea");
+        ta.value = text;
+        ta.style.cssText = "position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:80%;height:50vh;z-index:9999;font-size:12px;";
+        document.body.appendChild(ta);
+        ta.focus();
+        ta.select();
+        btn.textContent = "👆 長按選取";
+        setTimeout(() => {
+            ta.remove();
+            btn.textContent = "📋 複製";
+        }, 8000);
+    });
 }
 
 function toggleMusic() {
@@ -492,16 +520,25 @@ function toggleMusic() {
         music.play();
         sfxEnabled = true;
         btn.innerText = "🎵";
+        btn.style.filter = "sepia(1) saturate(3) hue-rotate(175deg) brightness(1.4)";
         btn.style.opacity = "1";
     } else {
         music.pause();
         sfxEnabled = false;
         btn.innerText = "🔇";
+        btn.style.filter = "";
         btn.style.opacity = "0.4";
     }
 }
 
+const BUBBLE_MAX = 6;       // 同時最多幾顆
+const BUBBLE_INTERVAL = 1200; // 每 1200ms 嘗試生一顆
+let _bubbleTimer = null;
+
 function createBubble() {
+    const container = document.getElementById("bubbles");
+    if (!container) return;
+    if (container.children.length >= BUBBLE_MAX) return; // 超過上限就跳過
     const b = document.createElement("div");
     b.className = "bubble";
     const size = 4 + Math.random() * 18;
@@ -513,10 +550,18 @@ function createBubble() {
     // 每顆泡泡獨立的左右飄移方向與距離（-8px ~ +8px）
     const drift = (Math.random() * 16 - 8).toFixed(1);
     b.style.setProperty("--drift-x", drift + "px");
-    document.getElementById("bubbles").appendChild(b);
+    container.appendChild(b);
     setTimeout(() => b.remove(), duration * 1000);
 }
-setInterval(createBubble, 300);
+
+function startBubbles() {
+    if (_bubbleTimer) return;
+    _bubbleTimer = setInterval(createBubble, BUBBLE_INTERVAL);
+}
+
+function stopBubbles() {
+    if (_bubbleTimer) { clearInterval(_bubbleTimer); _bubbleTimer = null; }
+}
 
 // =============================================
 // 🐟 魚體調色盤（每種魚有亮色/中色/暗色三層）
@@ -560,37 +605,27 @@ function initOceanCaustics() {
 // =============================================
 // 🐟 魚體建立（完整強化版）
 // =============================================
-function createFish() {
+function createFish(forceSprint = false) {
     const palette = fishPalettes[Math.floor(Math.random() * fishPalettes.length)];
 
     // ── 深度分層 ──────────────────────────────────
-    // 新增「衝刺」機率：5% 機率出現快速近景魚
-    const isSprint = Math.random() < 0.05;
+    const isSprint = forceSprint || Math.random() < 0.05;
     const depth = isSprint ? 2 : Math.floor(Math.random() * 3);
 
-    // 速度範圍大幅拉大，讓節奏更有變化
     const cfg = [
-        // 遠景：小、慢、淡
         { scale: 0.28, opacity: 0.28, speedBase: 22, speedVar: 10, waveAmp: 5,  tiltAmp: 1.5, wagSpeed: 0.55, finH: 0.30 },
-        // 中景
         { scale: 0.58, opacity: 0.52, speedBase: 12, speedVar: 7,  waveAmp: 14, tiltAmp: 3.0, wagSpeed: 0.40, finH: 0.35 },
-        // 近景：大、快、亮
         { scale: 1.00, opacity: 0.90, speedBase: 5,  speedVar: 5,  waveAmp: 24, tiltAmp: 5.0, wagSpeed: 0.28, finH: 0.40 },
     ][depth];
 
-    // 衝刺魚：比普通近景快一倍左右，但不要快到像閃過
-    const speed = isSprint
-        ? 7 + Math.random() * 3
-        : cfg.speedBase + Math.random() * cfg.speedVar;
+    const speed    = isSprint ? 7 + Math.random() * 3 : cfg.speedBase + Math.random() * cfg.speedVar;
+    const waveDur  = isSprint ? 1.4 : 1.8 + Math.random() * 2.5;
+    const waveDelay = isSprint ? 0 : Math.random() * 2;
+    const topPct   = isSprint ? 15 + Math.random() * 60 : 8 + Math.random() * 72;
 
     const size = 40 * cfg.scale;
     const h    = size * 0.48;
 
-    const waveDur   = 1.8 + Math.random() * 2.5;   // 波動週期
-    const waveDelay = Math.random() * 2;
-
-    // ── 立體漸層魚身 ──────────────────────────────
-    // 使用三點 radial-gradient 模擬光照：左上亮、中間色、右下暗
     const bodyGrad = `
         radial-gradient(ellipse at 38% 32%,
             ${palette.hi}   0%,
@@ -598,35 +633,33 @@ function createFish() {
             ${palette.lo}   100%
         )
     `;
-    // 外發光（用多層 box-shadow：近發光 + 遠發光）
+
+    // 衝刺魚發光加強
+    const glowMult = isSprint ? 0.6 : 0.5;
+    const glowMult2 = isSprint ? 1.5 : 1.2;
     const bodyShadow = `
         inset -2px -2px 5px rgba(0,0,0,0.25),
         inset  1px  1px 4px rgba(255,255,255,0.15),
-        0 0 ${size * 0.5}px ${palette.glow},
-        0 0 ${size * 1.2}px ${palette.glow.replace("0.4", "0.15").replace("0.45","0.15").replace("0.35","0.12").replace("0.40","0.12").replace("0.30","0.10")}
+        0 0 ${size * glowMult}px ${palette.glow},
+        0 0 ${size * glowMult2}px ${palette.glow.replace("0.4","0.15").replace("0.45","0.15").replace("0.35","0.12").replace("0.40","0.12").replace("0.30","0.10")}
     `;
 
-    // ── wrapper：Y 軸波動 + 整體傾斜（模擬游動姿態） ──
     const wrapper = document.createElement("div");
     wrapper.className = "fish";
     wrapper.style.cssText = `
         position: absolute;
-        top: ${8 + Math.random() * 72}%;
+        top: ${topPct}%;
         right: -120px;
         opacity: ${cfg.opacity};
         --wave-amp: ${cfg.waveAmp}px;
         --tilt-amp: ${cfg.tiltAmp}deg;
         animation: fishWave ${waveDur}s ${waveDelay}s ease-in-out infinite;
-        ${isSprint ? "filter: brightness(1.25);" : ""}
+        ${isSprint ? "filter: brightness(1.3) saturate(1.2);" : ""}
     `;
 
-    // ── inner：X 軸游動 ──
     const inner = document.createElement("div");
-    inner.style.cssText = `
-        animation: swim ${speed}s linear forwards;
-    `;
+    inner.style.cssText = `animation: swim ${speed}s linear forwards;`;
 
-    // ── 魚身 ──
     const body = document.createElement("div");
     body.className = "fish-body";
     body.style.cssText = `
@@ -637,7 +670,6 @@ function createFish() {
         animation: fishBodySway ${waveDur}s ${waveDelay}s ease-in-out infinite;
     `;
 
-    // ── 背鰭 ──
     const fin = document.createElement("div");
     fin.className = "fish-fin";
     const finH = h * cfg.finH;
@@ -650,7 +682,6 @@ function createFish() {
         animation-delay:    ${waveDelay}s;
     `;
 
-    // ── 魚尾（clip-path，寬端接魚身左側，尖端朝右） ──
     const tail = document.createElement("div");
     tail.className = "fish-tail";
     const tailW = size * 0.25;
@@ -661,16 +692,14 @@ function createFish() {
         height:     ${tailH}px;
         top:        ${tailTop}px;
         background: ${palette.tail};
-        animation:  tailWag ${cfg.wagSpeed}s ${waveDelay}s ease-in-out infinite;
+        animation:  tailWag ${isSprint ? "0.22s" : cfg.wagSpeed + "s"} ${waveDelay}s ease-in-out infinite;
     `;
 
-    // ── 魚眼 ──
     const eye = document.createElement("div");
     eye.className = "fish-eye";
     const es = Math.max(3, h * 0.20);
     eye.style.cssText = `width:${es}px; height:${es}px;`;
 
-    // 組裝
     body.appendChild(fin);
     body.appendChild(tail);
     body.appendChild(eye);
@@ -681,100 +710,91 @@ function createFish() {
     setTimeout(() => wrapper.remove(), speed * 1000 + 500);
 }
 
-// 普通魚：每 2.5 秒一條（比原本的 3 秒略密）
-setInterval(createFish, 2500);
+// 普通魚：遊戲開始後才啟動，4.5 秒一條，最多同時 6 條
+const FISH_MAX = 5;
+const FISH_INTERVAL = 4500;
+let _fishTimer = null;
+let _sprintTimer = null;
 
-// 衝刺魚獨立計時：每 12-20 秒隨機觸發一次（額外補充，確保衝刺感）
+function startFish() {
+    if (_fishTimer) return;
+    _fishTimer = setInterval(() => {
+        const layer = document.getElementById("fish-layer");
+        if (layer && layer.children.length < FISH_MAX) createFish();
+    }, FISH_INTERVAL);
+    scheduleSprintFish();
+}
+
+function stopFish() {
+    if (_fishTimer)  { clearInterval(_fishTimer);  _fishTimer  = null; }
+    if (_sprintTimer){ clearTimeout(_sprintTimer); _sprintTimer = null; }
+}
+
+// ── Page Visibility API：背景時暫停動畫省電 ──────────────
+document.addEventListener('visibilitychange', () => {
+    const inGame = document.body.classList.contains('game-started');
+    if (document.hidden) {
+        stopFish();
+        stopBubbles();
+        const bgm = document.getElementById('bgm');
+        if (bgm && !bgm.paused) { bgm._wasPlaying = true; bgm.pause(); }
+    } else {
+        if (inGame) {
+            startFish();
+            startBubbles();
+        }
+        const bgm = document.getElementById('bgm');
+        if (bgm && bgm._wasPlaying && sfxEnabled) { bgm._wasPlaying = false; bgm.play().catch(() => {}); }
+        else if (bgm) { bgm._wasPlaying = false; } // 靜音狀態下也清旗標
+    }
+});
+
+// 衝刺魚：每 15-25 秒強制產生一條近景快魚
 function scheduleSprintFish() {
-    const delay = 12000 + Math.random() * 8000;
-    setTimeout(() => {
-        // 直接呼叫 createFish，5% 機率已涵蓋衝刺；
-        // 這裡強制建立一條近景快魚
-        spawnSprintFish();
+    const delay = 15000 + Math.random() * 10000;
+    _sprintTimer = setTimeout(() => {
+        const layer = document.getElementById("fish-layer");
+        if (layer && layer.children.length < FISH_MAX) createFish(true);
         scheduleSprintFish();
     }, delay);
 }
 
-function spawnSprintFish() {
-    const palette = fishPalettes[Math.floor(Math.random() * fishPalettes.length)];
-    const size = 40; const h = size * 0.48;
-    const speed = 7 + Math.random() * 3;
-    const waveDur = 1.4; const waveDelay = 0;
-
-    const bodyGrad = `radial-gradient(ellipse at 38% 32%, ${palette.hi} 0%, ${palette.mid} 45%, ${palette.lo} 100%)`;
-    const bodyShadow = `inset -2px -2px 5px rgba(0,0,0,0.25), inset 1px 1px 4px rgba(255,255,255,0.15), 0 0 ${size * 0.6}px ${palette.glow}, 0 0 ${size * 1.5}px ${palette.glow}`;
-
-    const wrapper = document.createElement("div");
-    wrapper.className = "fish";
-    wrapper.style.cssText = `
-        position: absolute;
-        top: ${15 + Math.random() * 60}%;
-        right: -120px;
-        opacity: 0.92;
-        --wave-amp: 18px;
-        --tilt-amp: 4deg;
-        animation: fishWave ${waveDur}s ease-in-out infinite;
-        filter: brightness(1.3) saturate(1.2);
-    `;
-    const inner = document.createElement("div");
-    inner.style.cssText = `animation: swim ${speed}s linear forwards;`;
-
-    const body = document.createElement("div");
-    body.className = "fish-body";
-    body.style.cssText = `width:${size}px; height:${h}px; background:${bodyGrad}; box-shadow:${bodyShadow}; animation: fishBodySway ${waveDur}s ease-in-out infinite;`;
-
-    const fin = document.createElement("div");
-    fin.className = "fish-fin";
-    const finH = h * 0.42; const finW = size * 0.28;
-    fin.style.cssText = `border-left:${finW*0.35}px solid transparent; border-right:${finW*0.65}px solid transparent; border-bottom:${finH}px solid ${palette.fin}; animation-duration:${waveDur*0.9}s;`;
-
-    const tail = document.createElement("div");
-    tail.className = "fish-tail";
-    const tailW = size * 0.25;
-    const tailH = h * 0.70;
-    const tailTop = (h - tailH) / 2;
-    tail.style.cssText = `width:${tailW}px; height:${tailH}px; top:${tailTop}px; background:${palette.tail}; animation: tailWag 0.22s ease-in-out infinite;`;
-
-    const eye = document.createElement("div");
-    eye.className = "fish-eye";
-    const es = Math.max(3, h * 0.20);
-    eye.style.cssText = `width:${es}px; height:${es}px;`;
-
-    body.appendChild(fin); body.appendChild(tail); body.appendChild(eye);
-    inner.appendChild(body); wrapper.appendChild(inner);
-    document.getElementById("fish-layer").appendChild(wrapper);
-    setTimeout(() => wrapper.remove(), speed * 1000 + 500);
-}
-
-scheduleSprintFish();
-
 function initGame() {
 	initOceanCaustics();
+	startFish();    // ← 遊戲開始才啟動魚
+	startBubbles(); // ← 遊戲開始才啟動氣泡
 	document.body.classList.add('game-started');
+	
     // ✅ 改用加入 class 的方式觸發淡出
     const welcomeScreen = document.getElementById("welcome-screen");
     welcomeScreen.classList.add("fade-out");
 	
-	const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-    const bgmVolume = isMobile ? 0.03 : 0.1; // 手機用 0.03，電腦用 0.1
-
     // 啟動音樂與日誌
     document.getElementById("music-control").style.display = "flex";
 	document.getElementById("report-control").style.display = "flex";
     document.getElementById("log-btn").style.display = "flex";
     const music = document.getElementById("bgm");
-    music.play().then(() => {
-        music.volume = bgmVolume;
-    }).catch(err => {
-        console.log("播放受阻");
-        const btn = document.getElementById("music-control");
+    const btn = document.getElementById("music-control");
+    if (sfxEnabled) {
+        music.play().then(() => {
+            music.volume = 0.03;
+            btn.style.filter = "sepia(1) saturate(3) hue-rotate(175deg) brightness(1.4)";
+            btn.innerText = "🎵";
+            btn.style.opacity = "1";
+        }).catch(() => {
+            btn.innerText = "🔇";
+            btn.style.opacity = "0.4";
+        });
+    } else {
+        music.pause();
         btn.innerText = "🔇";
+        btn.style.filter = "";
         btn.style.opacity = "0.4";
-    });
-
-	document.getElementById('player-hand').addEventListener('scroll', updateHandArrows);
+    }
 
     // 直接切換畫面並開始遊戲
+    document.getElementById('player-hand').addEventListener('scroll', updateHandArrows);
+    initDrawerGesture();
     setTimeout(() => {
         startGame();
     }, 3500); // 保留 3.5 秒的淡出過渡效果
@@ -782,11 +802,11 @@ function initGame() {
 
 function startGame() {
 // 1. 從資料庫中隨機挑選 3 個角色
-    let aiPool = [...characterDB].sort(() => Math.random() - 0.5).slice(0, 3);
+    let aiPool = shuffle([...characterDB]).slice(0, 3);
     
     // 2. 初始化玩家與隨機選出的 AI
     players = [
-        { n: "你", hand: [], isAI: false }
+        { n: (window.playerName && window.playerName.trim()) ? window.playerName.trim() : "你", hand: [], isAI: false }
     ];
 
     // 3. 將選出的 AI 加入 players 陣列
@@ -802,11 +822,64 @@ function startGame() {
         });
     });	
 	
-    let fishD = [...fishDB].sort(()=>Math.random()-0.5);
-    players.forEach(p => p.hand = fishD.splice(0, 6));
-    deckS = [...summonDB, ...mazuCards].sort(()=>Math.random()-0.5);
+    let fishD = shuffle([...fishDB]);
     
-    const diffLabel = gameDifficulty <= 0.4 ? "隨興(難度0.4)" : gameDifficulty >= 0.9 ? "專注(難度0.9)" : "普通(難度0.7)";
+    // 新手難度：玩家優先從 e:1（容易）牌池抽牌，AI 從剩餘隨機抽
+    // 專業難度：完全隨機，不分等級
+    if (gameDifficulty <= 0.4) {
+        const easyPool   = fishD.filter(f => f.e === 1);
+        const otherPool  = fishD.filter(f => f.e !== 1);
+        const playerHand = [];
+        // 玩家盡量拿 e:1 的牌（最多 6 張，不夠就從 otherPool 補）
+        while (playerHand.length < 6) {
+            if (easyPool.length > 0) playerHand.push(easyPool.splice(0, 1)[0]);
+            else playerHand.push(otherPool.splice(0, 1)[0]);
+        }
+        players[0].hand = playerHand;
+        // AI 從剩餘（easyPool 剩餘 + otherPool）隨機抽
+        const remaining = shuffle([...easyPool, ...otherPool]);
+        players.slice(1).forEach(p => p.hand = remaining.splice(0, 6));
+    } else {
+        // 普通/專業：完全隨機
+        players.forEach(p => p.hand = fishD.splice(0, 6));
+    }
+
+    deckS = shuffle([...summonDB, ...mazuCards]);
+
+    // 新手保護：確保玩家前2次召喚不會抽到沒牌可出的召喚卡
+    // 4人輪流，玩家(callerIdx=0)的召喚在 deckS 末端：
+    //   第1次玩家召喚 → deckS[length-1]（第1回合）
+    //   第2次玩家召喚 → deckS[length-5]（第5回合）
+    if (gameDifficulty <= 0.4) {
+        const playerHand = players[0].hand;
+        const isSafe = s => !s.isMazu && playerHand.some(f => { try { return s.c(f); } catch(e) { return false; } });
+
+        const len = deckS.length;
+        const slots = [len - 1, len - 5];
+        const usedSwapSlots = new Set(slots); // 保護位置本身不能作為來源
+
+        slots.forEach(slot => {
+            if (slot < 0 || slot >= len) return;
+            if (isSafe(deckS[slot])) return; // 已經安全，不換
+            // 找一個不在保護位置、且是安全牌的位置來交換
+            let swapFrom = -1;
+            for (let i = 0; i < len; i++) {
+                if (!usedSwapSlots.has(i) && isSafe(deckS[i])) { swapFrom = i; break; }
+            }
+            if (swapFrom === -1) return; // 找不到就放棄
+            [deckS[slot], deckS[swapFrom]] = [deckS[swapFrom], deckS[slot]];
+            usedSwapSlots.add(swapFrom); // 這個來源已被用，下次不能再用
+        });
+    }
+
+    // 記錄初始手牌快照（遊戲結束時寫入 LOG 供分析）
+    initialHands = players.map(p => ({
+        name: p.n,
+        hand: p.hand.map(f => ({ n: f.n, l: f.l, d: f.d, m: [...f.m], h: f.h, s: f.s }))
+    }));
+    logPlainText = []; // 清空上局紀錄
+    
+    const diffLabel = gameDifficulty <= 0.4 ? "新手(難度0.4)" : gameDifficulty >= 0.9 ? "專業(難度0.9)" : "標準(難度0.7)";
     addLog(`勇者集結！難度：${diffLabel}。注意觀察大家的出牌...`);
 
     // 顯示等待藍框（HTML 已預先填好文字）
@@ -827,6 +900,12 @@ function updateCallerHighlight() {
             else el.classList.remove("is-caller");
         }
     });
+    // 玩家回合（含媽祖）才全開光束，其他時間只留第3條
+    const caustics = document.getElementById("ocean-caustics");
+    if (caustics) {
+        const isPlayerActive = phase === "PLAYER_TURN" || phase === "PLAYER_MAZU";
+        caustics.classList.toggle("beams-active", isPlayerActive);
+    }
 }
 
 let summonFocusTimer = null;
@@ -874,6 +953,7 @@ function showSummonFocus(duration, callback) {
 }
 
 function autoStep() {
+    lockUI(); // 每回合開始立刻鎖定
     if (deckS.length === 0) { 
         addLog("召喚卡已用盡！開始結算剩餘手牌...", "cmd");
                 // 找出手中剩餘卡牌最少的玩家
@@ -885,14 +965,18 @@ function autoStep() {
             }
         }
         // 延遲一秒後顯示勝利畫面
-        showCountdownBubble(4, () => showWinScreen(winner));
+        const isPlayerWin = winner === players[0];
+        showCountdownBubble(4, () => {
+            isPlayerWin ? SFX.win() : SFX.lose();
+            showWinScreen(winner);
+        });
         return;
     }
 	
     table = [];
     roundCount++;
-    const aiPlayers = players.filter(p => p.isAI);
-    speakingAI = aiPlayers[Math.floor(Math.random() * aiPlayers.length)];
+    chatQueue.clear(); // 新回合開始，清空對話佇列
+    roundChatCount = 0; // 重置對話計數器
 	document.getElementById("table").innerHTML = "";
     document.getElementById("summon-display").classList.remove("mazu-glow");
     const causticsReset = document.getElementById("ocean-caustics");
@@ -904,7 +988,8 @@ function autoStep() {
     updateCallerHighlight(); 
 
     if (callerIdx === 0) {
-        addLog(`【你】抽到召喚：${currentS.t.replace(/\n/g, " ")}`, "cmd");
+        SFX.draw(); // 玩家抽到召喚牌
+        addLog(`【${players[0].n}】抽到召喚：${currentS.t.replace(/\n/g, " ")}`, "cmd");
         document.getElementById("summon-display").innerText = (currentS.isMazu ? "【神明指示】\n" : "【你的召喚】\n") + currentS.t;
         phase = currentS.isMazu ? "PLAYER_MAZU" : "PLAYER_TURN";
         renderUI();
@@ -936,14 +1021,18 @@ function autoStep() {
             document.getElementById("summon-display").classList.add("mazu-glow");
             const caustics = document.getElementById("ocean-caustics");
             if (caustics) caustics.classList.add("mazu-beams");
-            playMazuSfx(); 
-            if (callerIdx !== 0) { handleMazuAI(caller); }
+            SFX.mazu();
+            if (callerIdx === 0) unlockUI(); // 玩家是媽祖召喚者，解鎖讓選牌
+            else handleMazuAI(caller);
         } else {
             if (callerIdx !== 0) {
                 let idx = aiChooseCard(players[callerIdx]);
                 aiMove(callerIdx, idx);
                 phase = "PLAYER_TURN";
                 renderUI();
+                unlockUI(); // AI 召喚完畢，玩家要跟牌，解鎖
+            } else {
+                unlockUI(); // 玩家自己是召喚者，解鎖讓出牌
             }
         }
     });
@@ -957,11 +1046,28 @@ function handleMazuAI(caller) {
         if (caller.hand.length === 0) { finishRound(); return; }
 
         let card = caller.hand.pop();
-        let target = players.filter(p => p !== caller).sort((a,b) => a.hand.length - b.hand.length)[0];
+
+        // 目標選擇：70% 送給手牌最少的人（多人並列時隨機選一位），30% 隨機送給任一人
+        // 新手模式：AI 只能送給其他 AI，不能送給玩家
+        const isNovice = gameDifficulty <= 0.4;
+        const others = players.filter(p => p !== caller && (isNovice ? p.isAI : true));
+
+        // 若新手模式下其他 AI 全空，fallback 到所有人（避免死鎖）
+        const pool = others.length > 0 ? others : players.filter(p => p !== caller);
+
+        let target;
+        if (Math.random() < 0.70) {
+            const minCount = Math.min(...pool.map(p => p.hand.length));
+            const fewest = pool.filter(p => p.hand.length === minCount);
+            target = fewest[Math.floor(Math.random() * fewest.length)];
+        } else {
+            target = pool[Math.floor(Math.random() * pool.length)];
+        }
+        const callerEl = document.getElementById(caller.id); // 送牌者的實際 AI 格子
         const targetEl = target.isAI
             ? document.getElementById(target.id)
             : document.getElementById("player-zone");
-        showMazuGiftEffect(caller.n, target.n, card, targetEl);
+        showMazuGiftEffect(caller.n, target.n, card, targetEl, callerEl);
 
         // 1. 送牌者先說話
         aiTalkMazuGive(caller, target, card);
@@ -969,7 +1075,7 @@ function handleMazuAI(caller) {
         // 2. 停頓 2 秒後，執行送牌動作與接收者說話
         setTimeout(() => {
             target.hand.push(card);
-            playPopSfx();
+            SFX.gift();
             addLog(`✨ ${caller.n} 分享了一張【${card.n}】給 ${target.n}！`, "success");
             
             // 3. 如果接收者是 AI，接著說話
@@ -1027,11 +1133,12 @@ function confirmMazuGift(cardIdx, target) {
     const card = players[0].hand.splice(cardIdx, 1)[0];
 
     const targetEl = document.getElementById(target.id);
-    showMazuGiftEffect("你", target.n, card, targetEl);
+    const playerEl = document.getElementById("player-zone");
+    showMazuGiftEffect("你", target.n, card, targetEl, playerEl);
 
     target.hand.push(card);
-    playPopSfx();
-    addLog(`✨ 你分享了【${card.n}】給 ${target.n}！`, "success");
+    SFX.gift();
+    addLog(`✨ ${players[0].n}分享了【${card.n}】給 ${target.n}！`, "success");
 
     if (target.isAI) {
         aiTalkMazuReceive(target, players[0], card);
@@ -1039,7 +1146,7 @@ function confirmMazuGift(cardIdx, target) {
 
     phase = "RESULT";
     renderUI();
-    // banner 顯示 5.5 秒後進入下一回合
+    lockUI(); // 等 banner 顯示完畢
     setTimeout(finishRound, 5500);
 }
 
@@ -1109,39 +1216,40 @@ async function playerAction(idx) {
         return;
     } else if (phase === "PLAYER_TURN") {
         const fish = players[0].hand[idx];
-        if (callerIdx === 0 && currentS.c) {
-            let hasValid = players[0].hand.some(f => currentS.c(f));
-            if (hasValid && !currentS.c(fish)) { alert("必須符合你抽到的規律！"); return; }
-        }
         players[0].hand.splice(idx, 1);
-        playPopSfx();
+        SFX.card();
         table.push({ pIdx: 0, card: fish });
         phase = "AI_FOLLOWING";
+        lockUI(); // 出牌後鎖定，防止亂點
 
-        renderUI(); // 先更新手牌（移除打出的牌）
+        renderUI();
 
-        // 出牌飛行動畫：動畫跑完後才讓卡出現在 ocean
         const fromEl = document.getElementById("player-zone");
         playCardFlyAnimation(fish, fromEl, () => renderTable());
 
-        await new Promise(resolve => setTimeout(resolve, 1550)); // 等動畫跑完
-        // 【關鍵修改】改用 for...of 才能支援 await
+        // 玩家出牌後：隨機抽 1～2 個 AI 說話，受回合上限控制
+        const aiPlayers = players.filter(p => p.isAI);
+        const shuffled = aiPlayers.sort(() => Math.random() - 0.5);
+        const count = Math.random() < 0.5 ? 1 : 2;
+        shuffled.slice(0, count).forEach(p => {
+            if (roundChatCount >= 2) return;
+            const isCorrect = currentS && currentS.c ? currentS.c(fish) : null;
+            queueAITalk(p, fish, isCorrect);
+            roundChatCount++;
+        });
+
+        await new Promise(resolve => setTimeout(resolve, 1550));
         for (let pi = 0; pi < players.length; pi++) {
             const p = players[pi];
-            
-            // 排除玩家本人 (pi === 0) 且如果是 AI 且不是目前的召喚者 (如果是 AI 跟牌)
             if (p.isAI && pi !== callerIdx) {
                 let matchIdx = aiChooseCard(p);
-                
-                // 每位 AI 出牌前先等 0.6 秒
                 await new Promise(resolve => setTimeout(resolve, 600));
-                
                 aiMove(pi, matchIdx); 
             }
         }
 
-        // 所有 AI 出完後再等 0.2 秒進結果
         await new Promise(resolve => setTimeout(resolve, 200));
+        unlockUI(); // AI 全部出完才解鎖
         showResult();
 		
     }
@@ -1149,22 +1257,35 @@ async function playerAction(idx) {
 
 function aiMove(pI, cI) {
     const p = players[pI];
-	if (!p.hand[cI]) return; // 安全機制：確保這位置有牌
+	if (!p.hand[cI]) return;
 	
     const f = p.hand.splice(cI, 1)[0];
 
-    playPopSfx();
+    SFX.cardAI();
     table.push({ pIdx: pI, card: f });
 
-    // 出牌飛行動畫：動畫跑完後才讓卡出現在 ocean
     const fromEl = document.getElementById(p.id);
     playCardFlyAnimation(f, fromEl, () => renderTable());
 
-    renderUI(); // 立即更新 AI 手牌數量
+    renderUI();
 
-    let isCorrect = currentS && currentS.c ? currentS.c(f) : null;
+    const isCorrect = currentS && currentS.c ? currentS.c(f) : null;
 
-    aiTalk(p, f, isCorrect);
+    // 出牌的 AI：50% 機率說話，受回合上限控制
+    if (roundChatCount < 2 && Math.random() < 0.5) {
+        queueAITalk(p, f, isCorrect);
+        roundChatCount++;
+    }
+
+    // 其他 AI：隨機抽 1 個說話，受回合上限控制
+    if (roundChatCount < 2) {
+        const others = players.filter(other => other.isAI && other !== p);
+        if (others.length) {
+            const speaker = others[Math.floor(Math.random() * others.length)];
+            queueAITalk(speaker, f, null);
+            roundChatCount++;
+        }
+    }
 }
 
 // =============================================
@@ -1298,12 +1419,13 @@ function showResult() {
             });
 
             if (isSuccess) {
-                playSuccessSfx();
                 addLog(`${player.n} 成功送出【${t.card.n}】`, "success");
+                // 更新玩家出牌紀錄的 success 狀態
             } else {
                 // 先暫存，等結算頁關閉後再動畫退回
                 pendingReturns.push({ card: t.card, player });
                 addLog(`${player.n} 的【${t.card.n}】不符規律，退回。`);
+                // 更新玩家出牌紀錄的 success 狀態
             }
         });
 
@@ -1316,7 +1438,11 @@ function showResult() {
             !pendingReturns.some(r => r.player === p)
         );
         if (realWin) {
-            showCountdownBubble(4, () => showWinScreen(realWin));
+            const isPlayerWin = realWin === players[0];
+            showCountdownBubble(4, () => {
+                isPlayerWin ? SFX.win() : SFX.lose();
+                showWinScreen(realWin);
+            });
             return;
         }
 
@@ -1367,9 +1493,11 @@ function showCountdownBubble(seconds, callback) {
 
 function finishRound() {
     let win = players.find(p => p.hand.length === 0);
-    if (win) { 
-        showWinScreen(win); 
-        return; 
+    if (win) {
+        const isPlayerWin = win === players[0];
+        isPlayerWin ? SFX.win() : SFX.lose();
+        showWinScreen(win);
+        return;
     }
     proceedToNextRound();
 }
@@ -1377,7 +1505,7 @@ function finishRound() {
 // 新增：處理下一回合的邏輯轉換
 function proceedToNextRound() {
     // 每回合結束後重排所有玩家手牌，避免 AI 因陣列順序固定而每次選同一張
-    players.forEach(p => { if (p.isAI) p.hand.sort(() => Math.random() - 0.5); });
+    players.forEach(p => { if (p.isAI) shuffle(p.hand); });
     callerIdx = (callerIdx + 1) % players.length;
     phase = "WAIT";
     autoStep();
@@ -1407,66 +1535,150 @@ function playPendingReturns(callback) {
 
 // 新增：彈出視窗函式
 function showRoundSummary() {
-		
-	if (!showSummaryMode) {
-        proceedToNextRound(); // 或 finishRound()，視您的架構而定
+
+    if (!showSummaryMode) {
+        proceedToNextRound();
         return;
     }
-	
+
+    if (roundReport.some(r => r.isSuccess)) SFX.success();
+
+    // ── 屬性條產生器 ──
+    function buildAttrBars(feature, isSuccess) {
+        const attrs = feature.split(/\s*\|\s*/).map(s => s.trim()).filter(Boolean);
+        if (!attrs.length) return '';
+        const barW  = isSuccess ? '100%' : '22%';
+        const barC  = isSuccess ? '#3ecf6e' : '#e05555';
+        const textC = isSuccess ? '#7eeaa8' : '#f08080';
+        const mark  = isSuccess ? '✓' : '✗';
+        return attrs.map(attr => `
+            <div style="display:flex;align-items:center;gap:6px;margin-top:3px;min-width:0;">
+                <span style="flex:1;min-width:0;height:4px;background:rgba(255,255,255,0.1);border-radius:2px;overflow:hidden;flex-shrink:0;">
+                    <span style="display:block;width:${barW};height:100%;background:${barC};border-radius:2px;"></span>
+                </span>
+                <span style="font-size:10px;color:${textC};word-break:break-all;flex-shrink:1;text-align:right;">${attr} ${mark}</span>
+            </div>`).join('');
+    }
+
+    // ── 玩家卡（2欄 grid）──
+    // 偶數：正常 1 欄，奇數最後一張跨欄
+    const total = roundReport.length;
+    const cardsHtml = roundReport.map((r, i) => {
+        const delay   = 0.10 + i * 0.08;
+        const isLast  = i === total - 1;
+        const isOdd   = total % 2 === 1;
+        const span    = (isLast && isOdd) ? 'grid-column:1/-1;' : '';
+        const bg      = r.isSuccess
+            ? 'background:linear-gradient(135deg,#0a2e1a,#0d3d22);border:1.5px solid #3a9e5f;'
+            : 'background:linear-gradient(135deg,#2a0f0f,#361212);border:1.5px solid #8b3030;';
+        const nameC   = r.isSuccess ? '#90f0b8' : '#f4a0a0';
+        const badge   = r.isSuccess
+            ? `<span style="font-size:14px;animation:rsPulse 1.4s infinite;display:inline-block;">⭐</span>`
+            : `<span style="font-size:10px;color:#f07070;background:rgba(200,50,50,0.2);border:1px solid rgba(200,50,50,0.4);padding:1px 7px;border-radius:8px;">退牌</span>`;
+
+        // 跨欄時橫向排列
+        if (isLast && isOdd) {
+            return `
+            <div style="${bg}${span}border-radius:13px;padding:8px 10px;min-width:0;overflow:hidden;
+                        animation:rsSlideUp .26s ${delay}s ease both;">
+                <div style="display:flex;align-items:center;gap:14px;">
+                    <div style="flex:0 0 auto;">
+                        <div style="display:flex;align-items:center;gap:7px;margin-bottom:4px;">
+                            <span style="font-size:11px;color:rgba(255,255,255,0.42);">${r.name}</span>
+                            ${badge}
+                        </div>
+                        <div style="font-size:16px;font-weight:bold;color:${nameC};">${r.fishName}</div>
+                    </div>
+                    <div style="flex:1;min-width:0;">
+                        ${buildAttrBars(r.feature, r.isSuccess)}
+                    </div>
+                </div>
+            </div>`;
+        }
+
+        return `
+        <div style="${bg}border-radius:13px;padding:8px 9px;min-width:0;overflow:hidden;
+                    animation:rsSlideUp .26s ${delay}s ease both;">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">
+                <span style="font-size:18px;color:rgba(255,255,255,0.42);">${r.name}</span>
+                ${badge}
+            </div>
+            <div style="font-size:20px;font-weight:bold;color:${nameC};margin-bottom:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${r.fishName}</div>
+            ${buildAttrBars(r.feature, r.isSuccess)}
+        </div>`;
+    }).join('');
+
+    // ── 共用卡片樣式（召喚條件 & 生態知識）──
+    const sharedCard = `background:linear-gradient(135deg,rgba(0,70,110,0.7),rgba(0,40,80,0.7));
+                        border:1.5px solid rgba(60,170,255,0.28);border-radius:13px;`;
+
+    // ── 生態知識 ──
+    const ecoDelay = 0.10 + total * 0.08 + 0.06;
+    const ecoHtml  = currentS.why ? `
+        <div style="${sharedCard}padding:7px 11px;margin-bottom:10px;
+                    animation:rsSlideUp .26s ${ecoDelay}s ease both;">
+            <div style="font-size:12px;color:#60c8f0;font-weight:bold;margin-bottom:3px;">🌊 生態小知識</div>
+            <div style="font-size:16px;color:rgba(190,235,255,0.88);line-height:1.6;">${currentS.why}</div>
+        </div>` : '';
+
+    // ── overlay ──
     const overlay = document.createElement("div");
     overlay.id = "round-summary-overlay";
-    overlay.style = `
-        position: fixed; top: 0; left: 0; width: 100%; height: 100%; 
-        background: rgba(0,0,0,0.7); display: flex; justify-content: center; 
-        align-items: center; z-index: 4000; backdrop-filter: blur(4px);
+    overlay.style.cssText = `
+        position:fixed;top:0;left:0;width:100%;height:100%;
+        background:rgba(4,12,22,0.92);display:flex;justify-content:center;
+        align-items:center;box-sizing:border-box;
+        z-index:4000;
     `;
 
-    const reportHtml = roundReport.map(r => `
-        <div style="display: flex; align-items: center; padding: 10px 0; border-bottom: 1px solid #eee; text-align: left;">
-            <div style="font-size: 1.2rem; margin-right: 15px; width: 25px;">
-                ${r.isSuccess ? '<span style="color: #2ecc71;">✔️</span>' : '<span style="color: #e74c3c;">❌</span>'}
-            </div>
-            <div style="flex-grow: 1;">
-                <span style="font-weight: bold; color: #333;">${r.name}</span>：
-                <span>${r.fishName}</span>
-                <span style="
-                    margin-left: 8px; 
-                    padding: 2px 8px; 
-                    background: ${r.isSuccess ? '#d7ded9' : '#d7ded9'}; 
-                    color: ${r.isSuccess ? '#247173' : '#c62828'}; 
-                    border-radius: 4px; 
-                    font-size: 0.85rem;
-                    border: 1px solid ${r.isSuccess ? '#247173' : '#247173'};
-                ">
-                    ${r.feature}
-                </span>
-            </div>
-        </div>
-    `).join('');
-
+    // ── modal ──
     const modal = document.createElement("div");
     modal.style.cssText = `
-        background: white; padding: 25px; border-radius: 20px; 
-        width: 90%; max-width: 450px; box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+        background:linear-gradient(170deg,#0d2137 0%,#081626 100%);
+        border-radius:20px;border:1px solid rgba(255,255,255,0.07);
+        width:92%;max-width:400px;
+        max-height:82vh;overflow-y:auto;
+        padding:12px 11px 14px;box-sizing:border-box;
+        animation:rsSlideDown .36s ease-out both;
     `;
-    modal.classList.add("summary-pop-anim");
-	
 
     modal.innerHTML = `
-        <h2 style="color: #00796b; margin-top: 0; font-size: 1.1rem;">回合成果結算</h2>
-        
-        <div style="background: #f1f8e9; padding: 10px; border-radius: 10px; margin-bottom: 15px; text-align: left;">
-            <div style="font-weight: bold; color: #388e3c; font-size: 0.9rem;">📜 本回召喚要求：</div>
-            <div style="font-size: 1rem; color: #333; margin-top: 4px;">${currentS.t}</div>
+        <style>
+            @keyframes rsSlideDown {
+                from { transform:translateY(-30px); opacity:0; }
+                to   { transform:translateY(0);     opacity:1; }
+            }
+            @keyframes rsSlideUp {
+                from { transform:translateY(13px); opacity:0; }
+                to   { transform:translateY(0);    opacity:1; }
+            }
+            @keyframes rsPulse {
+                0%,100% { opacity:1; } 50% { opacity:.4; }
+            }
+            #round-summary-overlay ::-webkit-scrollbar { width:3px; }
+            #round-summary-overlay ::-webkit-scrollbar-track { background:transparent; }
+            #round-summary-overlay ::-webkit-scrollbar-thumb { background:rgba(255,255,255,0.15);border-radius:2px; }
+        </style>
+
+        <div style="${sharedCard}padding:7px 11px;margin-bottom:8px;
+                    animation:rsSlideUp .26s .04s ease both;">
+            <div style="font-size:12px;color:#60c8f0;letter-spacing:1.5px;margin-bottom:2px;">📜 本回召喚條件 📜</div>
+            <div style="font-size:16px;color:#fff;font-weight:bold;line-height:1.4;">${currentS.t}</div>
         </div>
 
-        <div style="margin-bottom: 20px;">
-            ${reportHtml}
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:8px;min-width:0;">
+            ${cardsHtml}
         </div>
+
+        ${ecoHtml}
 
         <button id="close-summary-btn" style="
-            width: 100%; padding: 10px; background: #FFDFBA; border: none; 
-            border-radius: 50px; font-weight: bold; color: #d35400; cursor: pointer;
+            width:100%;padding:11px;border:none;border-radius:50px;
+            font-size:22px;font-weight:900;cursor:pointer;letter-spacing:0.5px;
+            background:linear-gradient(135deg,#f5c842,#e07828);
+            color:#1a0800;
+            box-shadow:0 4px 0 #8a4200, 0 6px 14px rgba(200,100,0,0.3);
+            text-shadow:none;
         ">整理魚獲，繼續冒險</button>
     `;
 
@@ -1475,6 +1687,7 @@ function showRoundSummary() {
 
     document.getElementById("close-summary-btn").onclick = () => {
         overlay.remove();
+        lockUI();
         playPendingReturns(() => proceedToNextRound());
     };
 }
@@ -1498,9 +1711,12 @@ function aiChooseCard(p) {
             .map((f, idx) => ({ f, idx }))
             .filter(c => !(currentS && currentS.c && currentS.c(c.f)));
 
-        // 低難度：傾向出正確牌（玩家容易看懂規律、跟對牌）
-        // 高難度：傾向出錯誤牌（玩家難以從 AI 出牌推敲條件）
-        const playCorrect = Math.random() > difficulty;
+        // 召喚者出正確牌的機率：
+        // 公式：min(0.95, max(0.50, 1.030 - 0.537 * difficulty))
+        // 新手+chaotic(eff=0.15) → 95%、專業+smart(eff=0.97) → 51%
+        // 永遠不低於 50%（避免反指標）、不高於 95%（保留少量不確定性）
+        const correctChance = Math.min(0.95, Math.max(0.50, 1.030 - 0.537 * difficulty));
+        const playCorrect = Math.random() < correctChance;
 
         // 問題3：手上沒有符合牌時，記錄到 log 讓玩家知道
         if (validCards.length === 0) {
@@ -1554,38 +1770,44 @@ function aiChooseCard(p) {
     const partialPool = candidates.filter(c => c.score > 0 && c.score < topScore);
     const wrongPool   = candidates.filter(c => c.score === 0);
 
-    // 問題4：topScore === 0 時（手牌完全沒有與桌面共同特徵的牌），
-    // 不應 fallback 到 wrongPool（等同完全隨機），
-    // 而是直接從分數最高的 candidates 中選（雖然分數都是 0，但至少不是亂選）
+    // 手牌沒有任何特徵吻合（topScore === 0）：只能隨機，難度無法幫助
     if (topScore === 0) {
-        // 手牌沒有任何特徵吻合，高難度仍嘗試從 candidates 前段選，低難度完全隨機
-        const roll = Math.random();
-        if (roll < difficulty) {
-            // 高難度：從 candidates 最前段選（雖然都是 0 分，但維持一致行為）
-            return candidates[Math.floor(Math.random() * Math.min(2, candidates.length))].idx;
-        }
         return candidates[Math.floor(Math.random() * candidates.length)].idx;
     }
 
-    // 難度決定從哪組選牌
+    // 跟牌邏輯：目標永遠是盡量跟對牌（清手牌）
+    // 難度影響的是「推測能力」：高難度估得準（best 機率高），低難度估得不準（偶爾落到 partial）
+    // 任何情況都不主動選 wrong pool（跟錯牌退回來對自己沒好處）
+    //
+    // 機率分配：
+    //   difficulty 0.97（smart 專業）→ best 97%、partial 3%、wrong 0%
+    //   difficulty 0.55（smart 新手）→ best 80%、partial 18%、wrong 2%
+    //   difficulty 0.15（chaotic 新手）→ best 60%、partial 33%、wrong 7%
+    //
+    // 公式：
+    //   P(best)    = 0.45 + difficulty * 0.535   → clamp [0.60, 0.97]
+    //   P(partial) = (1 - P(best)) * 0.80
+    //   P(wrong)   = (1 - P(best)) * 0.20
+
+    const pBest    = Math.min(0.97, Math.max(0.60, 0.45 + difficulty * 0.535));
+    const pPartial = (1 - pBest) * 0.80;
+    // pWrong = (1 - pBest) * 0.20（剩餘）
+
     const roll = Math.random();
-    if (roll < difficulty) {
-        // 高難度：從最佳匹配中選
+    if (roll < pBest) {
         return bestPool[Math.floor(Math.random() * bestPool.length)].idx;
-    } else if (roll < difficulty + (1 - difficulty) * 0.4) {
-        // 中間：從部分匹配中選
+    } else if (roll < pBest + pPartial) {
         if (partialPool.length > 0)
             return partialPool[Math.floor(Math.random() * partialPool.length)].idx;
+        return bestPool[Math.floor(Math.random() * bestPool.length)].idx;
+    } else {
+        // 極低機率的 wrong（估錯），若 wrongPool 空則退回 partial 或 best
+        if (wrongPool.length > 0)
+            return wrongPool[Math.floor(Math.random() * wrongPool.length)].idx;
+        if (partialPool.length > 0)
+            return partialPool[Math.floor(Math.random() * partialPool.length)].idx;
+        return bestPool[Math.floor(Math.random() * bestPool.length)].idx;
     }
-
-    // 低難度落點：從完全不匹配的牌中選，讓玩家容易看出差異
-    if (wrongPool.length > 0)
-        return wrongPool[Math.floor(Math.random() * wrongPool.length)].idx;
-
-    // wrongPool 也空（代表所有牌都有分），退回 partialPool 或 bestPool
-    if (partialPool.length > 0)
-        return partialPool[Math.floor(Math.random() * partialPool.length)].idx;
-    return bestPool[Math.floor(Math.random() * bestPool.length)].idx;
 }
 
 function showChat(p, msg) {
@@ -1620,50 +1842,60 @@ function showChat(p, msg) {
     setTimeout(() => bubble.remove(), 3000);
 }
 
-function aiTalk(p, card, isCorrectGuess = null) {
-    if (p !== speakingAI) return;
-
+// 組合台詞並加入 queue
+function queueAITalk(p, card, isCorrectGuess) {
     const persona = p.personality;
-    let lines = [...dialogueDB[persona].play];
+    const db = dialogueDB[persona];
+    let pool = [];
 
-    // 針對狡猾性格的特殊邏輯：如果亂出牌且有設定特殊台詞
-    if (isCorrectGuess === false && dialogueDB[persona].playWrong) {
-        lines.push(...dialogueDB[persona].playWrong);
+    if (isCorrectGuess === false && db.playWrong) pool.push(...db.playWrong);
+
+    if (card) {
+        if (card.l === 3 && db.playRed)          pool.push(...db.playRed);
+        else if (card.l === 1 && db.playGreen)   pool.push(...db.playGreen);
+        if (card.d === "養殖" && db.playFarm)    pool.push(...db.playFarm);
     }
 
-    const msg = lines[Math.floor(Math.random() * lines.length)];
-    showChat(p, msg);
+    if (!pool.length) pool = [...db.play];
+
+    const msg = pool[Math.floor(Math.random() * pool.length)];
+    chatQueue.push(p, msg);
+}
+
+// 保留 aiTalk 作為向後相容（目前已無直接呼叫，備用）
+function aiTalk(p, card, isCorrectGuess = null) {
+    queueAITalk(p, card, isCorrectGuess);
 }
 
 function aiTalkMazuGive(p, target, card) {
     const lines = dialogueDB[p.personality].mazuGive;
     const msg = lines[Math.floor(Math.random() * lines.length)];
-    showChat(p, msg);
+    chatQueue.push(p, msg);
 }
 
 function aiTalkMazuReceive(p, from, card) {
     const lines = dialogueDB[p.personality].mazuReceive;
     const msg = lines[Math.floor(Math.random() * lines.length)];
-    showChat(p, msg);
+    chatQueue.push(p, msg);
 }
 
 
 
 
-function showMazuGiftEffect(fromName, toName, card, targetEl) {
-    // 建立飛行層
+function showMazuGiftEffect(fromName, toName, card, targetEl, fromEl) {
     const flyLayer = document.createElement("div");
     flyLayer.id = "mazu-gift-effect";
     document.body.appendChild(flyLayer);
 
-    // 計算起點（送牌者位置）與終點（接收者位置）
-    const fromEl = fromName === "你"
-        ? document.getElementById("player-zone")
-        : document.querySelector(".char-area");
+    // 起點：直接用傳入的 fromEl，fallback 到 player-zone 或 char-area
+    const resolvedFromEl = fromEl
+        || (fromName === "你"
+            ? document.getElementById("player-zone")
+            : document.querySelector(".char-area"));
     const toEl = targetEl || document.querySelector(".char-area");
 
-    const fromRect = (fromEl || document.body).getBoundingClientRect();
-    const toRect   = (toEl   || document.body).getBoundingClientRect();
+    const fromRect = (resolvedFromEl || document.body).getBoundingClientRect();
+    const toRect   = (toEl          || document.body).getBoundingClientRect();
 
     const startX = fromRect.left + fromRect.width  / 2 - 40;
     const startY = fromRect.top  + fromRect.height / 2 - 55;
@@ -1725,18 +1957,163 @@ function showMazuGiftEffect(fromName, toName, card, targetEl) {
     }, 2000);
 }
 
+// =============================================
+// 🗂️ 手牌抽屜（Drawer）系統
+// =============================================
+
+let drawerOpen = false;
+
+function updateDrawerArrow(show) {
+    const arrow = document.getElementById("drawer-up-arrow");
+    if (arrow) arrow.style.display = show ? "block" : "none";
+    if (!show && drawerOpen) closeDrawer();
+}
+
+function openDrawer() {
+    if (drawerOpen) return;
+    drawerOpen = true;
+
+    let drawer = document.getElementById("hand-drawer");
+    if (!drawer) {
+        drawer = document.createElement("div");
+        drawer.id = "hand-drawer";
+        document.body.appendChild(drawer); // fixed 定位，掛在 body
+
+        let dy0 = 0;
+        drawer.addEventListener("touchstart", (e) => {
+            dy0 = e.touches[0].clientY;
+        }, { passive: true });
+        drawer.addEventListener("touchend", (e) => {
+            if (e.changedTouches[0].clientY - dy0 > 50) closeDrawer();
+        }, { passive: true });
+    }
+
+    renderDrawer(drawer);
+    drawer.style.display = "block";
+    requestAnimationFrame(() => {
+        drawer.style.transform = "translateY(0)";
+    });
+}
+
+function closeDrawer() {
+    if (!drawerOpen) return;
+    drawerOpen = false;
+    const drawer = document.getElementById("hand-drawer");
+    if (!drawer) return;
+    drawer.style.transform = "translateY(100%)";
+    setTimeout(() => { if (!drawerOpen) drawer.style.display = "none"; }, 280);
+}
+
+function renderDrawer(drawer) {
+    const isNormalTask = currentS && !currentS.isMazu && phase === "PLAYER_TURN" && callerIdx === 0;
+
+    drawer.innerHTML = `
+        <div class="drawer-handle-bar"></div>
+        <div class="drawer-hint">點卡直接出牌 ／ 下滑收起</div>
+        <div class="drawer-grid" id="drawer-grid"></div>
+    `;
+
+    const grid = drawer.querySelector("#drawer-grid");
+
+    players[0].hand.forEach((f, idx) => {
+        const isValid = isNormalTask && currentS.c(f);
+
+        const wrap = document.createElement("div");
+        wrap.className = "drawer-card-wrap";
+
+        const card = document.createElement("div");
+        card.className = `drawer-card light-${f.l}${isValid ? " drawer-valid" : ""}`;
+
+        card.innerHTML = `
+            <div class="drawer-card-name">${f.n}</div>
+            <div class="drawer-card-img">
+                <img src="fishdb/${f.n}.png" alt="${f.n}" onerror="this.style.display='none'">
+            </div>
+            <div class="drawer-card-tags">${getFishTags(f)}</div>
+        `;
+
+        if (isValid) {
+            const dot = document.createElement("span");
+            dot.className = "drawer-valid-dot";
+            wrap.appendChild(dot);
+        }
+
+        card.onclick = (e) => {
+            e.stopPropagation();
+            closeDrawer();
+            setTimeout(() => playerAction(idx), 50);
+        };
+
+        wrap.appendChild(card);
+        grid.appendChild(wrap);
+    });
+}
+
+// 初始化手牌區的上滑手勢偵測
+let drawerGestureInited = false;
+function initDrawerGesture() {
+    if (drawerGestureInited) return;
+    drawerGestureInited = true;
+    const zone = document.getElementById("player-zone");
+    if (!zone) return;
+
+    let startY = 0, startX = 0;
+    let intentDecided = false, isVerticalSwipe = false;
+
+    zone.addEventListener("touchstart", (e) => {
+        startY = e.touches[0].clientY;
+        startX = e.touches[0].clientX;
+        intentDecided = false;
+        isVerticalSwipe = false;
+    }, { passive: true });
+
+    zone.addEventListener("touchmove", (e) => {
+        if (drawerOpen) return;
+        // win-screen 顯示中不干擾
+        if (document.getElementById("win-overlay")) return;
+        const dy = e.touches[0].clientY - startY;
+        const dx = Math.abs(e.touches[0].clientX - startX);
+
+        if (!intentDecided) {
+            if (Math.abs(dy) < 8 && dx < 8) return;
+            isVerticalSwipe = Math.abs(dy) > dx;
+            intentDecided = true;
+        }
+        // 確認往上垂直滑 → 阻止頁面捲動
+        if (isVerticalSwipe && dy < 0) {
+            e.preventDefault();
+        }
+    }, { passive: false });
+
+    zone.addEventListener("touchend", (e) => {
+        if (!intentDecided || !isVerticalSwipe || drawerOpen) return;
+        if (document.getElementById("win-overlay")) return;
+        const dy = e.changedTouches[0].clientY - startY;
+        const dx = Math.abs(e.changedTouches[0].clientX - startX);
+        if (dy < -40 && dx < 60) {
+            const isMyTurn = phase === "PLAYER_TURN" || phase === "PLAYER_MAZU";
+            if (isMyTurn) openDrawer();
+        }
+    }, { passive: true });
+}
+
+// 點抽屜外背景關閉
+document.addEventListener("touchstart", (e) => {
+    if (!drawerOpen) return;
+    if (document.getElementById("win-overlay")) { closeDrawer(); return; }
+    const drawer = document.getElementById("hand-drawer");
+    if (drawer && !drawer.contains(e.target)) closeDrawer();
+}, { passive: true });
+
 function toggleReportMode() {
     showSummaryMode = !showSummaryMode;
     const btn = document.getElementById("report-control");
-    // 直接操作 inline style，避免被開始時設的 style.display 蓋過
     if (showSummaryMode) {
         btn.style.opacity = "1";
-        btn.style.filter = "";
-        btn.textContent = "📊";
+        btn.innerHTML = "📊";
     } else {
-        btn.style.opacity = "0.4";
-        btn.style.filter = "grayscale(1)";
-        btn.textContent = "❌";
+        btn.style.opacity = "0.85";
+        btn.innerHTML = `<span style="filter:grayscale(1);display:inline-block;">📊</span><span style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:1.2em;font-weight:900;color:#ff2222;pointer-events:none;">✕</span>`;
         // 關掉時清除可能殘留的結算 overlay
         const existing = document.getElementById("round-summary-overlay");
         if (existing) {
@@ -1746,27 +2123,3 @@ function toggleReportMode() {
     }
 }
 
-function updateHandArrows() {
-    const hand = document.getElementById('player-hand');
-    const leftArrow = document.getElementById('arrow-left');
-    const rightArrow = document.getElementById('arrow-right');
-
-    if (!hand || !leftArrow || !rightArrow) return;
-
-    // 1. 判斷是否「溢出」：內容寬度 > 容器寬度
-    const isOverflowing = hand.scrollWidth > hand.clientWidth;
-
-    if (isOverflowing) {
-        // 2. 如果溢出，根據滾動位置判斷顯示哪邊
-        // 往右滑了超過 5px 才顯示左箭頭
-        leftArrow.style.display = hand.scrollLeft > 5 ? 'flex' : 'none';
-        
-        // 還有超過 5px 的空間可以往右滑，才顯示右箭頭
-        const maxScroll = hand.scrollWidth - hand.clientWidth;
-        rightArrow.style.display = (hand.scrollLeft < maxScroll - 5) ? 'flex' : 'none';
-    } else {
-        // 3. 沒溢出就全部隱藏
-        leftArrow.style.display = 'none';
-        rightArrow.style.display = 'none';
-    }
-}
